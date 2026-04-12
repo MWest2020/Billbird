@@ -1,0 +1,30 @@
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+*_rsa
+*.crt
+
+# Go build output
+/billbird
+/cmd/billbird/billbird
+vendor/
+*.exe
+*.test
+*.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+docker-compose.override.yml
+
+# OS
+Thumbs.db

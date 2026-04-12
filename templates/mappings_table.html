@@ -1,0 +1,30 @@
+<table>
+    <thead>
+        <tr>
+            <th>Label</th>
+            <th>Client</th>
+            <th>Repository</th>
+            <th>Created</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Mappings}}
+        <tr>
+            <td><code>{{.Label}}</code></td>
+            <td>{{.ClientName}}</td>
+            <td>{{if .Repository}}{{.Repository}}{{else}}<span class="text-muted">global</span>{{end}}</td>
+            <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+            <td>
+                <button class="btn btn-danger btn-sm"
+                    hx-delete="/admin/mappings/{{.ID}}"
+                    hx-target="#mappings-list"
+                    hx-swap="innerHTML"
+                    hx-confirm="Remove this mapping?">Remove</button>
+            </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="5" class="text-muted">No mappings yet.</td></tr>
+        {{end}}
+    </tbody>
+</table>

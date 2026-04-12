@@ -1,0 +1,47 @@
+<div class="stats">
+    <div class="stat">
+        <div class="value">{{.TotalHours}}</div>
+        <div class="label">Total hours (active)</div>
+    </div>
+    <div class="stat">
+        <div class="value">{{.EntryCount}}</div>
+        <div class="label">Time entries</div>
+    </div>
+    <div class="stat">
+        <div class="value">{{.DevCount}}</div>
+        <div class="label">Developers</div>
+    </div>
+    <div class="stat">
+        <div class="value">{{.ClientCount}}</div>
+        <div class="label">Active clients</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Time entries</h2>
+    <form class="filters" hx-get="/admin/partials/entries" hx-target="#entries-table" hx-trigger="change, submit" hx-push-url="false">
+        <div>
+            <label>From</label>
+            <input type="date" name="from" value="{{.FilterFrom}}">
+        </div>
+        <div>
+            <label>To</label>
+            <input type="date" name="to" value="{{.FilterTo}}">
+        </div>
+        <div>
+            <label>Developer</label>
+            <input type="text" name="username" placeholder="github username" value="{{.FilterUsername}}">
+        </div>
+        <div>
+            <label>Repository</label>
+            <input type="text" name="repo" placeholder="owner/repo" value="{{.FilterRepo}}">
+        </div>
+        <div>
+            <label>&nbsp;</label>
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+    </form>
+    <div id="entries-table">
+        {{.EntriesHTML}}
+    </div>
+</div>

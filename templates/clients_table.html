@@ -1,0 +1,42 @@
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Clients}}
+        <tr>
+            <td>{{.ID}}</td>
+            <td>{{.Name}}</td>
+            <td>
+                {{if .Active}}<span class="badge badge-active">active</span>
+                {{else}}<span class="badge badge-deleted">inactive</span>{{end}}
+            </td>
+            <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+            <td>
+                {{if .Active}}
+                <button class="btn btn-danger btn-sm"
+                    hx-patch="/admin/clients/{{.ID}}"
+                    hx-vals='{"active": false}'
+                    hx-target="#clients-list"
+                    hx-swap="innerHTML"
+                    hx-confirm="Deactivate {{.Name}}?">Deactivate</button>
+                {{else}}
+                <button class="btn btn-primary btn-sm"
+                    hx-patch="/admin/clients/{{.ID}}"
+                    hx-vals='{"active": true}'
+                    hx-target="#clients-list"
+                    hx-swap="innerHTML">Activate</button>
+                {{end}}
+            </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="5" class="text-muted">No clients yet.</td></tr>
+        {{end}}
+    </tbody>
+</table>

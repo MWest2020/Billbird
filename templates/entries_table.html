@@ -1,0 +1,32 @@
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Developer</th>
+            <th>Repository</th>
+            <th>Issue</th>
+            <th>Duration</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Entries}}
+        <tr>
+            <td>{{.ID}}</td>
+            <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+            <td>{{.GitHubUsername}}</td>
+            <td>{{.Repository}}</td>
+            <td>#{{.IssueNumber}}</td>
+            <td>{{.Duration}}</td>
+            <td>{{if .Description}}{{.Description}}{{else}}<span class="text-muted">—</span>{{end}}</td>
+            <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
+            <td><a href="{{.SourceCommentURL}}" target="_blank" class="link">view</a></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="9" class="text-muted">No entries found.</td></tr>
+        {{end}}
+    </tbody>
+</table>

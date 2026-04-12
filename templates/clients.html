@@ -1,0 +1,19 @@
+<div class="card">
+    <h2>Add client</h2>
+    <form hx-post="/admin/clients" hx-target="#clients-list" hx-swap="innerHTML" hx-on::after-request="this.reset()">
+        <div style="display: flex; gap: 12px; align-items: end;">
+            <div class="form-group" style="flex:1">
+                <label>Client name</label>
+                <input type="text" name="name" required placeholder="City of Amsterdam">
+            </div>
+            <div><button type="submit" class="btn btn-primary">Add</button></div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Clients</h2>
+    <div id="clients-list">
+        {{.ClientsHTML}}
+    </div>
+</div>

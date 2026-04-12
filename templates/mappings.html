@@ -1,0 +1,32 @@
+<div class="card">
+    <h2>Add label mapping</h2>
+    <form hx-post="/admin/mappings" hx-target="#mappings-list" hx-swap="innerHTML" hx-on::after-request="this.reset()">
+        <div style="display: flex; gap: 12px; align-items: end; flex-wrap: wrap;">
+            <div class="form-group" style="flex:1; min-width:200px">
+                <label>GitHub label</label>
+                <input type="text" name="label_pattern" required placeholder="client:amsterdam">
+            </div>
+            <div class="form-group" style="flex:1; min-width:200px">
+                <label>Client</label>
+                <select name="client_id" required>
+                    <option value="">Select client...</option>
+                    {{range .Clients}}
+                    <option value="{{.ID}}">{{.Name}}</option>
+                    {{end}}
+                </select>
+            </div>
+            <div class="form-group" style="flex:1; min-width:200px">
+                <label>Repository (optional)</label>
+                <input type="text" name="repository" placeholder="owner/repo (blank = global)">
+            </div>
+            <div><button type="submit" class="btn btn-primary">Add</button></div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Label mappings</h2>
+    <div id="mappings-list">
+        {{.MappingsHTML}}
+    </div>
+</div>

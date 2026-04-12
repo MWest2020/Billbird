@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# billbird — CLI wrapper for logging time via GitHub issue comments
+# Posts /log, /correct, /delete comments that Billbird's webhook picks up.
+# Requires: gh (GitHub CLI), authenticated via `gh auth login`
+
+VERSION="0.1.0"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  billbird log    <issue> <duration> [description]
+  billbird correct <issue> <duration> [description]
+  billbird delete  <issue>
+
+  <issue>     Issue number (e.g. 42) or full reference (e.g. org/repo#42)
+  <duration>  Time spent (e.g. 2h, 30m, 1h30m)
+
+Examples:
+  billbird log 42 2h
+  billbird log 42 1h30m "Fixed auth bug"
+  billbird correct 42 3h
+  billbird delete 42
+  billbird log org/repo#42 2h "Code review"
+
+When inside a git repo, the repo is auto-detected from the remote.
+EOF
+  exit 1
+}
+
+die() { echo "error: $1" >&2; exit 1; }
+
+# Check dependencies
+command -v gh >/dev/null 2>&1 || die "gh (GitHub CLI) is required. Install: https://cli.github.com"
+
+[[ $# -lt 1 ]] && usage
+
+CMD="$1"
+shift
+
+case "$CMD" in
+  log|correct)
+    [[ $# -lt 2 ]] && die "usage: billbird $CMD <issue> <duration> [description]"
+    ISSUE="$1"
+    DURATION="$2"
+    shift 2
+    DESC="${*:-}"
+
+    # Validate duration format
+    if ! echo "$DURATION" | grep -qE '^[0-9]+h([0-9]+m)?$|^[0-9]+m$'; then
+      die "invalid duration '$DURATION' — use e.g. 2h, 30m, 1h30m"
+    fi
+
+    if [[ -n "$DESC" ]]; then
+      BODY="/$CMD $DURATION $DESC"
+    else
+      BODY="/$CMD $DURATION"
+    fi
+    ;;
+  delete)
+    [[ $# -lt 1 ]] && die "usage: billbird delete <issue>"
+    ISSUE="$1"
+    BODY="/delete"
+    ;;
+  version|--version|-v)
+    echo "billbird $VERSION"
+    exit 0
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    die "unknown command '$CMD'. Use: log, correct, delete"
+    ;;
+esac
+
+# Parse issue reference: either "42" or "org/repo#42"
+if echo "$ISSUE" | grep -qE '^[0-9]+$'; then
+  # Plain number — detect repo from git remote
+  REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null) \
+    || die "could not detect repo. Use full reference: org/repo#$ISSUE"
+  ISSUE_NUM="$ISSUE"
+elif echo "$ISSUE" | grep -qE '^[^#]+#[0-9]+$'; then
+  # Full reference: org/repo#42
+  REPO="${ISSUE%%#*}"
+  ISSUE_NUM="${ISSUE##*#}"
+else
+  die "invalid issue reference '$ISSUE' — use a number (42) or full reference (org/repo#42)"
+fi
+
+echo "Posting to $REPO#$ISSUE_NUM: $BODY"
+gh issue comment "$ISSUE_NUM" --repo "$REPO" --body "$BODY"
