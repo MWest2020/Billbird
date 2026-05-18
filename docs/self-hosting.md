@@ -2,6 +2,21 @@
 
 Billbird is designed to be self-hosted. You own your data completely. The only external dependencies are PostgreSQL and a GitHub App registration.
 
+## Per-organisation deployment pattern
+
+**Read this before configuring anything.** Billbird is intentionally single-tenant: one Billbird instance per organisation. Two organisations sharing a single Billbird deployment is not a supported pattern and is explicitly out of scope for v2 (see [the architecture doc](architecture.md#deployment-topology)).
+
+In practice this means each organisation gets:
+
+- **Its own Postgres database.** No multi-tenant column lives in the schema; data isolation is provided by the deployment boundary. A shared database would commingle organisations' time data, which the schema does not protect against.
+- **Its own GitHub App registration.** GitHub Apps are organisation-scoped; this is the natural unit anyway.
+- **Its own secret store.** Webhook secret, App private key, OAuth client secret, and session secret should never be reused across organisations.
+- **Its own backup cadence.** Billbird never physically deletes rows, so backups are the audit trail. Per-organisation retention requirements apply per backup.
+
+The `ALLOWED_ORGS` environment variable typically holds **one** organisation login. Comma-separated multi-org values stay legal — for example a consulting team that operates from one GitHub org but logs time against client GitHub orgs — but that is a conscious operator choice, not the default model.
+
+A team that genuinely needs multi-tenant SaaS hosting today should fork the project; the scope for v2 does not include it.
+
 ## Docker Compose
 
 The simplest way to run Billbird.
@@ -9,7 +24,8 @@ The simplest way to run Billbird.
 ### Prerequisites
 
 - Docker and Docker Compose
-- A registered GitHub App (see [setup.md](setup.md))
+- A registered GitHub App **dedicated to this organisation** (see [setup.md](setup.md))
+- A Postgres database **dedicated to this organisation** (Docker Compose provisions one out of the box)
 
 ### Steps
 
@@ -77,8 +93,10 @@ For production deployments on Kubernetes.
 
 - A Kubernetes cluster
 - Helm 3
-- A PostgreSQL instance (managed or self-hosted)
-- A registered GitHub App
+- A PostgreSQL instance **dedicated to this organisation** (managed or self-hosted)
+- A registered GitHub App **dedicated to this organisation**
+
+> If you operate Billbird for multiple organisations, install the chart into a separate namespace per organisation with separate secrets and a separate database. Do not point two installs at the same database.
 
 ### Install
 

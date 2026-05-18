@@ -43,6 +43,10 @@ Billbird is a [GitHub App](https://docs.github.com/en/apps) that listens to issu
 
 Corrections create a new entry that supersedes the old one. Deletes mark entries as deleted. Nothing is ever physically removed from the database --- the issue thread is the audit log.
 
+## Deployment model
+
+Billbird is **one instance per organisation**: each organisation gets its own Postgres database, its own GitHub App, and its own secret store. Multi-tenant SaaS hosting is explicitly out of scope. See [docs/self-hosting.md](docs/self-hosting.md#per-organisation-deployment-pattern) for the operator playbook.
+
 ## Quick start
 
 ```bash

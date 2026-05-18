@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-05-18 — Deployment topology committed: one instance per organisation
+
+### Documentation
+- `docs/self-hosting.md` opens with a "Per-organisation deployment pattern" section. Operators are expected to read it before they configure Docker Compose or Helm. Adds explicit per-organisation requirements: separate Postgres database, separate GitHub App, separate secret store, separate backup cadence.
+- `docs/architecture.md` adds a "Deployment topology" subsection that records the one-instance-per-organisation decision and its consequences (user-scoped API tokens, no tenant column in the schema, per-instance backups). The design-constraint bullet list mentions single-tenant per instance explicitly.
+- `README.md` gains a "Deployment model" paragraph near Quick start.
+
+### Rationale
+The v1 design.md listed multi-tenancy as a non-goal, but `ALLOWED_ORGS` quietly allowed a comma-separated list which could be read as encouragement to share an instance across organisations. Formalising the topology now keeps future schema decisions honest: every Billbird instance belongs to exactly one organisation, so user-scoped tokens are enough, no tenant column needs to land in the data model, and per-organisation operational concerns (retention, rotation, backup) align with the deployment boundary.
+
+Multi-tenant SaaS hosting remains explicitly out of scope for v2. Any proposal that would change this requires a dedicated change that revises the `billbird-org-scoping` requirements and provides a migration plan.
+
+### No code or schema changes
+This is a doc-only commit. The running binary continues to honour whatever `ALLOWED_ORGS` is set to.
+
 ## 2026-05-18 — Plan command and API tokens
 
 ### Added
