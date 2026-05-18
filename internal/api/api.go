@@ -7,34 +7,50 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mwesterweel/billbird/internal/apitoken"
+	"github.com/mwesterweel/billbird/internal/auth"
 	"github.com/mwesterweel/billbird/internal/commands"
+	"github.com/mwesterweel/billbird/internal/planentry"
 	"github.com/mwesterweel/billbird/internal/timeentry"
 )
 
 type Handler struct {
 	pool        *pgxpool.Pool
 	timeEntries *timeentry.Store
+	planEntries *planentry.Store
+	tokens      *apitoken.Store
 }
 
-func NewHandler(pool *pgxpool.Pool, timeEntries *timeentry.Store) *Handler {
-	return &Handler{pool: pool, timeEntries: timeEntries}
+func NewHandler(pool *pgxpool.Pool, timeEntries *timeentry.Store, planEntries *planentry.Store, tokens *apitoken.Store) *Handler {
+	return &Handler{pool: pool, timeEntries: timeEntries, planEntries: planEntries, tokens: tokens}
 }
 
-// RegisterRoutes registers all API routes on the given mux.
-func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/time-entries", h.ListTimeEntries)
-	mux.HandleFunc("GET /api/v1/time-entries/{id}", h.GetTimeEntry)
-	mux.HandleFunc("GET /api/v1/time-entries/{id}/chain", h.GetCorrectionChain)
-	mux.HandleFunc("GET /api/v1/clients", h.ListClients)
-	mux.HandleFunc("POST /api/v1/clients", h.CreateClient)
-	mux.HandleFunc("PATCH /api/v1/clients/{id}", h.UpdateClient)
-	mux.HandleFunc("GET /api/v1/label-mappings", h.ListLabelMappings)
-	mux.HandleFunc("POST /api/v1/label-mappings", h.CreateLabelMapping)
-	mux.HandleFunc("DELETE /api/v1/label-mappings/{id}", h.DeleteLabelMapping)
-	mux.HandleFunc("GET /api/v1/export/csv", h.ExportCSV)
+// RegisterRoutes registers all API routes on the given mux. The
+// authMiddleware wraps every handler so /api/v1/* requires either a valid
+// session cookie or a bearer token.
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware func(http.Handler) http.Handler) {
+	wrap := func(fn http.HandlerFunc) http.Handler { return authMiddleware(fn) }
+	mux.Handle("GET /api/v1/time-entries", wrap(h.ListTimeEntries))
+	mux.Handle("GET /api/v1/time-entries/{id}", wrap(h.GetTimeEntry))
+	mux.Handle("GET /api/v1/time-entries/{id}/chain", wrap(h.GetCorrectionChain))
+	mux.Handle("GET /api/v1/plans", wrap(h.ListPlans))
+	mux.Handle("GET /api/v1/plans/{id}", wrap(h.GetPlan))
+	mux.Handle("GET /api/v1/plans/{id}/chain", wrap(h.GetPlanChain))
+	mux.Handle("GET /api/v1/issues/{owner}/{repo}/{number}/plan-vs-actual", wrap(h.GetPlanVsActual))
+	mux.Handle("GET /api/v1/tokens", wrap(h.ListTokens))
+	mux.Handle("POST /api/v1/tokens", wrap(h.CreateToken))
+	mux.Handle("DELETE /api/v1/tokens/{id}", wrap(h.RevokeToken))
+	mux.Handle("GET /api/v1/clients", wrap(h.ListClients))
+	mux.Handle("POST /api/v1/clients", wrap(h.CreateClient))
+	mux.Handle("PATCH /api/v1/clients/{id}", wrap(h.UpdateClient))
+	mux.Handle("GET /api/v1/label-mappings", wrap(h.ListLabelMappings))
+	mux.Handle("POST /api/v1/label-mappings", wrap(h.CreateLabelMapping))
+	mux.Handle("DELETE /api/v1/label-mappings/{id}", wrap(h.DeleteLabelMapping))
+	mux.Handle("GET /api/v1/export/csv", wrap(h.ExportCSV))
 }
 
 // --- Time Entries ---
@@ -379,6 +395,227 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	cw.Flush()
+}
+
+// --- Plans ---
+
+func (h *Handler) ListPlans(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := planentry.ListFilter{
+		Status: q.Get("status"),
+		Repo:   q.Get("repository"),
+	}
+	if v := q.Get("issue"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			jsonError(w, "invalid issue number", http.StatusBadRequest)
+			return
+		}
+		f.IssueNumber = &n
+	}
+	if v := q.Get("since"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			jsonError(w, "invalid since date, use YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+		f.DateFrom = &t
+	}
+	if v := q.Get("until"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			jsonError(w, "invalid until date, use YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+		end := t.AddDate(0, 0, 1)
+		f.DateTo = &end
+	}
+
+	plans, err := h.planEntries.List(r.Context(), f)
+	if err != nil {
+		log.Printf("error listing plans: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, plans)
+}
+
+func (h *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	plan, err := h.planEntries.GetByID(r.Context(), id)
+	if err != nil {
+		log.Printf("error getting plan: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if plan == nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, plan)
+}
+
+func (h *Handler) GetPlanChain(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	chain, err := h.planEntries.GetChain(r.Context(), id)
+	if err != nil {
+		log.Printf("error getting plan chain: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, chain)
+}
+
+func (h *Handler) GetPlanVsActual(w http.ResponseWriter, r *http.Request) {
+	owner := r.PathValue("owner")
+	repoName := r.PathValue("repo")
+	number := r.PathValue("number")
+	if owner == "" || repoName == "" || number == "" {
+		jsonError(w, "owner, repo, and number are required", http.StatusBadRequest)
+		return
+	}
+	n, err := strconv.Atoi(number)
+	if err != nil {
+		jsonError(w, "invalid issue number", http.StatusBadRequest)
+		return
+	}
+	repo := owner + "/" + repoName
+
+	pva, err := h.planEntries.ComputePlanVsActual(r.Context(), repo, n)
+	if err != nil {
+		log.Printf("error computing plan vs actual: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, pva)
+}
+
+// --- Tokens ---
+
+type tokenView struct {
+	ID         int64      `json:"id"`
+	Label      string     `json:"label"`
+	Prefix     string     `json:"prefix"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	Revoked    bool       `json:"revoked"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	Plaintext  string     `json:"plaintext,omitempty"`
+}
+
+func tokenToView(t apitoken.Token) tokenView {
+	return tokenView{
+		ID:         t.ID,
+		Label:      t.Label,
+		Prefix:     t.Prefix,
+		CreatedAt:  t.CreatedAt,
+		LastUsedAt: t.LastUsedAt,
+		Revoked:    t.Revoked,
+		RevokedAt:  t.RevokedAt,
+	}
+}
+
+func (h *Handler) ListTokens(w http.ResponseWriter, r *http.Request) {
+	ctx := auth.GetAPIAuth(r)
+	if ctx == nil || ctx.Session == nil {
+		jsonError(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	tokens, err := h.tokens.ListForUser(r.Context(), ctx.Session.UserID)
+	if err != nil {
+		log.Printf("error listing tokens: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	views := make([]tokenView, len(tokens))
+	for i, t := range tokens {
+		views[i] = tokenToView(t)
+	}
+	writeJSON(w, views)
+}
+
+func (h *Handler) CreateToken(w http.ResponseWriter, r *http.Request) {
+	ctx := auth.GetAPIAuth(r)
+	if ctx == nil || ctx.Session == nil {
+		jsonError(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	if ctx.Method != auth.AuthMethodCookie {
+		// Refuse to mint new tokens via a token — keeps blast radius
+		// of a leaked token to read-mostly use.
+		jsonError(w, "token creation requires a browser session", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		Label string `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	req.Label = strings.TrimSpace(req.Label)
+	if req.Label == "" {
+		jsonError(w, "label is required", http.StatusBadRequest)
+		return
+	}
+
+	t, err := h.tokens.Generate(r.Context(), ctx.Session.UserID, ctx.Session.Username, req.Label)
+	if err != nil {
+		log.Printf("error generating token: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	view := tokenToView(*t)
+	view.Plaintext = t.Plaintext
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, view)
+}
+
+func (h *Handler) RevokeToken(w http.ResponseWriter, r *http.Request) {
+	ctx := auth.GetAPIAuth(r)
+	if ctx == nil || ctx.Session == nil {
+		jsonError(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	target, err := h.tokens.GetByID(r.Context(), id)
+	if err == apitoken.ErrTokenNotFound {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("error fetching token: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if target.GitHubUserID != ctx.Session.UserID {
+		// Only the owner can revoke through the API. Admin override is
+		// available through the admin panel route.
+		jsonError(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	if err := h.tokens.Revoke(r.Context(), id, ctx.Session.Username); err != nil {
+		log.Printf("error revoking token: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- Helpers ---

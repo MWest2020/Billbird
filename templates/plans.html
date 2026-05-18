@@ -1,0 +1,36 @@
+<div class="card">
+    <h2>Plans (active)</h2>
+    <p class="text-muted mb-2">
+        One row per issue with an active plan. Comparison is against the sum of active log entries.
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>Repository</th>
+                <th>Issue</th>
+                <th>Planned</th>
+                <th>Logged</th>
+                <th>Variance</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Rows}}
+            <tr>
+                <td>{{.Repository}}</td>
+                <td>#{{.IssueNumber}}</td>
+                <td>{{.Planned}}</td>
+                <td>{{.Logged}}</td>
+                <td>{{.Variance}}</td>
+                <td><span class="badge badge-{{.StatusBadge}}">{{.StatusBadge}}</span></td>
+                <td>
+                    <a href="/admin/plans/{{.Repository}}/{{.IssueNumber}}" class="link">history</a>
+                </td>
+            </tr>
+            {{else}}
+            <tr><td colspan="7" class="text-muted">No active plans yet. Use <code>/plan 8h</code> in an issue comment to create one.</td></tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>

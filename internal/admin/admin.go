@@ -2,16 +2,20 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/mwesterweel/billbird/internal/apitoken"
 	"github.com/mwesterweel/billbird/internal/auth"
 	"github.com/mwesterweel/billbird/internal/commands"
+	"github.com/mwesterweel/billbird/internal/planentry"
 	"github.com/mwesterweel/billbird/internal/timeentry"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,15 +24,17 @@ import (
 type Handler struct {
 	pool      *pgxpool.Pool
 	entries   *timeentry.Store
+	plans     *planentry.Store
+	tokens    *apitoken.Store
 	templates *template.Template
 }
 
-func NewHandler(pool *pgxpool.Pool, entries *timeentry.Store) (*Handler, error) {
+func NewHandler(pool *pgxpool.Pool, entries *timeentry.Store, plans *planentry.Store, tokens *apitoken.Store) (*Handler, error) {
 	tmpl, err := template.ParseGlob("templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
 	}
-	return &Handler{pool: pool, entries: entries, templates: tmpl}, nil
+	return &Handler{pool: pool, entries: entries, plans: plans, tokens: tokens, templates: tmpl}, nil
 }
 
 // RegisterRoutes registers admin routes. All routes require auth middleware.
@@ -44,6 +50,293 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware func(http.Ha
 	mux.Handle("POST /admin/mappings", wrap(h.CreateMapping))
 	mux.Handle("DELETE /admin/mappings/{id}", wrap(h.DeleteMapping))
 	mux.Handle("GET /admin/partials/entries", wrap(h.EntriesPartial))
+	mux.Handle("GET /admin/plans", wrap(h.Plans))
+	mux.Handle("GET /admin/plans/{repo}/{number}", wrap(h.PlanHistory))
+	mux.Handle("GET /admin/tokens", wrap(h.Tokens))
+	mux.Handle("POST /admin/tokens", wrap(h.CreateTokenForm))
+	mux.Handle("POST /admin/tokens/{id}/revoke", wrap(h.RevokeTokenForm))
+}
+
+// --- Plans ---
+
+type planView struct {
+	ID               int64
+	CreatedAt        time.Time
+	GitHubUsername   string
+	Repository       string
+	IssueNumber      int
+	Duration         string
+	Description      string
+	Status           string
+	SourceCommentURL string
+	ClosingURL       string
+}
+
+type planVsActualView struct {
+	Repository  string
+	IssueNumber int
+	Planned     string
+	Logged      string
+	Variance    string
+	StatusBadge string // under | on_target | over | no_plan
+}
+
+func (h *Handler) Plans(w http.ResponseWriter, r *http.Request) {
+	session := auth.GetSession(r)
+	if h.plans == nil {
+		http.Error(w, "plans not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	plans, err := h.plans.List(r.Context(), planentry.ListFilter{Status: "active"})
+	if err != nil {
+		log.Printf("admin plans list error: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Compute plan-vs-actual rows
+	rows := make([]planVsActualView, 0, len(plans))
+	for _, p := range plans {
+		pva, err := h.plans.ComputePlanVsActual(r.Context(), p.Repository, p.IssueNumber)
+		if err != nil {
+			log.Printf("plan-vs-actual error %s#%d: %v", p.Repository, p.IssueNumber, err)
+			continue
+		}
+		rows = append(rows, planVsActualView{
+			Repository:  pva.Repository,
+			IssueNumber: pva.IssueNumber,
+			Planned:     commands.FormatDuration(pva.PlannedMins),
+			Logged:      commands.FormatDuration(pva.LoggedMins),
+			Variance:    formatVariance(pva.VarianceMins),
+			StatusBadge: pva.Status,
+		})
+	}
+
+	data := layoutData{
+		Title:    "Plans",
+		Active:   "plans",
+		Username: session.Username,
+		Content: h.renderTemplate("plans.html", map[string]any{
+			"Rows": rows,
+		}),
+	}
+	h.renderLayout(w, data)
+}
+
+func (h *Handler) PlanHistory(w http.ResponseWriter, r *http.Request) {
+	session := auth.GetSession(r)
+	if h.plans == nil {
+		http.Error(w, "plans not configured", http.StatusServiceUnavailable)
+		return
+	}
+	repoEnc := r.PathValue("repo")
+	repo, err := decodeRepo(repoEnc)
+	if err != nil {
+		http.Error(w, "invalid repo", http.StatusBadRequest)
+		return
+	}
+	issueNumber, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		http.Error(w, "invalid issue number", http.StatusBadRequest)
+		return
+	}
+
+	// Get the latest plan entry (active or otherwise) for the issue, then chain from it.
+	plans, err := h.plans.List(r.Context(), planentry.ListFilter{
+		Repo:        repo,
+		IssueNumber: &issueNumber,
+		Status:      "all",
+	})
+	if err != nil {
+		log.Printf("admin plan history list error: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if len(plans) == 0 {
+		http.Error(w, "no plans for this issue", http.StatusNotFound)
+		return
+	}
+
+	chain, err := h.plans.GetChain(r.Context(), plans[0].ID)
+	if err != nil {
+		log.Printf("admin plan chain error: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	views := make([]planView, len(chain))
+	for i, p := range chain {
+		v := planView{
+			ID:               p.ID,
+			CreatedAt:        p.CreatedAt,
+			GitHubUsername:   p.GitHubUsername,
+			Repository:       p.Repository,
+			IssueNumber:      p.IssueNumber,
+			Duration:         commands.FormatDuration(p.DurationMinutes),
+			Description:      p.Description,
+			Status:           p.Status,
+			SourceCommentURL: p.SourceCommentURL,
+		}
+		if p.ClosingCommentURL != nil {
+			v.ClosingURL = *p.ClosingCommentURL
+		}
+		views[i] = v
+	}
+
+	data := layoutData{
+		Title:    "Plan history",
+		Active:   "plans",
+		Username: session.Username,
+		Content: h.renderTemplate("plan_history.html", map[string]any{
+			"Plans":       views,
+			"Repository":  repo,
+			"IssueNumber": issueNumber,
+		}),
+	}
+	h.renderLayout(w, data)
+}
+
+// decodeRepo accepts either a path-style "owner__repo" or a literal
+// "owner/repo" wrapped as a path segment (which works on Go 1.22+ as
+// "owner/repo" because of pattern matching). The encoded form uses a
+// double-underscore separator for safety with the path router.
+func decodeRepo(s string) (string, error) {
+	if s == "" {
+		return "", fmt.Errorf("empty")
+	}
+	if strings.Contains(s, "/") {
+		return s, nil
+	}
+	if i := strings.Index(s, "__"); i > 0 {
+		return s[:i] + "/" + s[i+2:], nil
+	}
+	return "", fmt.Errorf("malformed repo %q", s)
+}
+
+func formatVariance(minutes int) string {
+	if minutes == 0 {
+		return "0m"
+	}
+	if minutes > 0 {
+		return "+" + commands.FormatDuration(minutes)
+	}
+	return "-" + commands.FormatDuration(-minutes)
+}
+
+// --- Tokens ---
+
+type tokenRow struct {
+	ID         int64
+	Label      string
+	Prefix     string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+	Revoked    bool
+}
+
+func (h *Handler) Tokens(w http.ResponseWriter, r *http.Request) {
+	session := auth.GetSession(r)
+	if h.tokens == nil {
+		http.Error(w, "tokens not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	rows, err := h.tokens.ListForUser(r.Context(), session.UserID)
+	if err != nil {
+		log.Printf("admin tokens list error: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	views := make([]tokenRow, len(rows))
+	for i, t := range rows {
+		views[i] = tokenRow{
+			ID:         t.ID,
+			Label:      t.Label,
+			Prefix:     t.Prefix,
+			CreatedAt:  t.CreatedAt,
+			LastUsedAt: t.LastUsedAt,
+			Revoked:    t.Revoked,
+		}
+	}
+
+	// A freshly minted plaintext is delivered via the query string
+	// exactly once. We never persist it; we never reload it.
+	newPlaintext := r.URL.Query().Get("new_token")
+
+	data := layoutData{
+		Title:    "API tokens",
+		Active:   "tokens",
+		Username: session.Username,
+		Content: h.renderTemplate("tokens.html", map[string]any{
+			"Tokens":       views,
+			"NewPlaintext": newPlaintext,
+		}),
+	}
+	h.renderLayout(w, data)
+}
+
+func (h *Handler) CreateTokenForm(w http.ResponseWriter, r *http.Request) {
+	session := auth.GetSession(r)
+	if h.tokens == nil {
+		http.Error(w, "tokens not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	label := strings.TrimSpace(r.FormValue("label"))
+	if label == "" {
+		http.Error(w, "label is required", http.StatusBadRequest)
+		return
+	}
+
+	t, err := h.tokens.Generate(r.Context(), session.UserID, session.Username, label)
+	if err != nil {
+		log.Printf("admin token generate error: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Redirect back to the listing carrying the plaintext exactly once.
+	http.Redirect(w, r, "/admin/tokens?new_token="+t.Plaintext, http.StatusSeeOther)
+}
+
+func (h *Handler) RevokeTokenForm(w http.ResponseWriter, r *http.Request) {
+	session := auth.GetSession(r)
+	if h.tokens == nil {
+		http.Error(w, "tokens not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	target, err := h.tokens.GetByID(r.Context(), id)
+	if err == apitoken.ErrTokenNotFound {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("admin token lookup error: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if target.GitHubUserID != session.UserID {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	if err := h.tokens.Revoke(r.Context(), id, session.Username); err != nil {
+		log.Printf("admin token revoke error: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/tokens", http.StatusSeeOther)
 }
 
 // --- Dashboard ---
@@ -92,7 +385,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM clients WHERE active = true`).Scan(&clientCount)
 
 	// Render entries partial
-	entriesHTML := h.renderEntriesTable(entries)
+	entriesHTML := h.renderEntriesTable(r.Context(), entries)
 
 	data := layoutData{
 		Title:    "Dashboard",
@@ -138,7 +431,7 @@ func (h *Handler) EntriesPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, h.renderEntriesTable(entries))
+	fmt.Fprint(w, h.renderEntriesTable(r.Context(), entries))
 }
 
 // --- Clients ---
@@ -299,6 +592,8 @@ type entryView struct {
 	Description      string
 	Status           string
 	SourceCommentURL string
+	PlanBadge        string // under | on_target | over | no_plan | "" when plans not loaded
+	PlanSummary      string // e.g. "8h / 6h"
 }
 
 func (h *Handler) renderLayout(w http.ResponseWriter, data layoutData) {
@@ -317,10 +612,33 @@ func (h *Handler) renderTemplate(name string, data any) template.HTML {
 	return template.HTML(buf.String())
 }
 
-func (h *Handler) renderEntriesTable(entries []timeentry.Entry) template.HTML {
+func (h *Handler) renderEntriesTable(ctx context.Context, entries []timeentry.Entry) template.HTML {
 	views := make([]entryView, len(entries))
+
+	// Deduplicate (repo, issue) lookups so a dashboard page with many entries
+	// on the same issue only hits the database once per issue.
+	type issueKey struct {
+		Repo string
+		Num  int
+	}
+	cache := map[issueKey]planentry.PlanVsActual{}
+	if h.plans != nil {
+		for _, e := range entries {
+			key := issueKey{Repo: e.Repository, Num: e.IssueNumber}
+			if _, ok := cache[key]; ok {
+				continue
+			}
+			pva, err := h.plans.ComputePlanVsActual(ctx, e.Repository, e.IssueNumber)
+			if err != nil {
+				log.Printf("plan-vs-actual for %s#%d: %v", e.Repository, e.IssueNumber, err)
+				continue
+			}
+			cache[key] = *pva
+		}
+	}
+
 	for i, e := range entries {
-		views[i] = entryView{
+		v := entryView{
 			ID:               e.ID,
 			CreatedAt:        e.CreatedAt,
 			GitHubUsername:   e.GitHubUsername,
@@ -331,6 +649,17 @@ func (h *Handler) renderEntriesTable(entries []timeentry.Entry) template.HTML {
 			Status:           e.Status,
 			SourceCommentURL: e.SourceCommentURL,
 		}
+		if pva, ok := cache[issueKey{Repo: e.Repository, Num: e.IssueNumber}]; ok {
+			v.PlanBadge = pva.Status
+			if pva.Status == "no_plan" {
+				v.PlanSummary = fmt.Sprintf("— / %s", commands.FormatDuration(pva.LoggedMins))
+			} else {
+				v.PlanSummary = fmt.Sprintf("%s / %s",
+					commands.FormatDuration(pva.PlannedMins),
+					commands.FormatDuration(pva.LoggedMins))
+			}
+		}
+		views[i] = v
 	}
 	return h.renderTemplate("entries_table.html", map[string]any{"Entries": views})
 }

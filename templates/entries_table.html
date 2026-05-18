@@ -7,6 +7,7 @@
             <th>Repository</th>
             <th>Issue</th>
             <th>Duration</th>
+            <th>Plan vs Logged</th>
             <th>Description</th>
             <th>Status</th>
             <th></th>
@@ -21,12 +22,19 @@
             <td>{{.Repository}}</td>
             <td>#{{.IssueNumber}}</td>
             <td>{{.Duration}}</td>
+            <td>
+                {{if .PlanBadge}}
+                <span class="badge badge-{{.PlanBadge}}">{{.PlanSummary}}</span>
+                {{else}}
+                <span class="text-muted">—</span>
+                {{end}}
+            </td>
             <td>{{if .Description}}{{.Description}}{{else}}<span class="text-muted">—</span>{{end}}</td>
             <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
             <td><a href="{{.SourceCommentURL}}" target="_blank" class="link">view</a></td>
         </tr>
         {{else}}
-        <tr><td colspan="9" class="text-muted">No entries found.</td></tr>
+        <tr><td colspan="10" class="text-muted">No entries found.</td></tr>
         {{end}}
     </tbody>
 </table>

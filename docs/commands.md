@@ -2,6 +2,8 @@
 
 Billbird recognizes slash commands in GitHub issue comments. Commands must appear at the start of a line.
 
+There are two command families: **time-logging** (`/log`, `/correct`, `/delete`) records actual time, and **planning** (`/plan`, `/unplan`) records forecast time. Both follow the same non-destructive correction-chain pattern.
+
 ## /log
 
 Log time on the current issue.
@@ -86,6 +88,53 @@ Remove your most recent entry on the current issue.
 
 **Errors:**
 - If you have no active entry on this issue, the bot replies with an error
+
+## /plan
+
+Record a forecast (estimate) for the current issue.
+
+```
+/plan <duration> [description]
+```
+
+**Examples:**
+
+```
+/plan 8h
+/plan 4h Initial scope estimate
+/plan 1h30m
+```
+
+**Behavior:**
+- Creates a new plan entry with status `active`
+- An issue has **at most one active plan**. Running `/plan` again on the same issue marks the previous plan as `superseded` and links the chain via `superseded_by`
+- Plans are independent of clients — they live in their own table (`plan_entries`), not in `time_entries`
+- The plan is compared against the sum of active log entries through the **plan-vs-actual** view in the admin panel and API
+
+**Confirmation (new plan):**
+> Planned 8h on this issue by @developer (plan #12)
+
+**Confirmation (re-plan):**
+> Updated @developer's plan from 8h to 12h (plan #13 supersedes #12)
+
+## /unplan
+
+Remove the active plan on the current issue.
+
+```
+/unplan
+```
+
+**Behavior:**
+- Finds the active plan (regardless of who created it)
+- Marks it as `deleted` and records the `/unplan` comment as the closing reference
+- No physical deletion ever occurs
+
+**Confirmation:**
+> Removed @developer's plan of 8h (plan #12)
+
+**Errors:**
+- If the issue has no active plan, the bot replies with an error
 
 ## How commands are parsed
 

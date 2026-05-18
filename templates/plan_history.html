@@ -1,0 +1,35 @@
+<div class="card">
+    <h2>Plan history — {{.Repository}}#{{.IssueNumber}}</h2>
+    <p class="text-muted mb-2">
+        Every plan entry for this issue, oldest first. The active entry (if any) is the one currently counted.
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>Author</th>
+                <th>Duration</th>
+                <th>Description</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Plans}}
+            <tr>
+                <td>{{.ID}}</td>
+                <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+                <td>{{.GitHubUsername}}</td>
+                <td>{{.Duration}}</td>
+                <td>{{if .Description}}{{.Description}}{{else}}<span class="text-muted">—</span>{{end}}</td>
+                <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
+                <td><a href="{{.SourceCommentURL}}" target="_blank" class="link">comment</a></td>
+                <td>{{if .ClosingURL}}<a href="{{.ClosingURL}}" target="_blank" class="link">closed by</a>{{end}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    <p class="mt-2"><a href="/admin/plans" class="link">← Back to plans</a></p>
+</div>

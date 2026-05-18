@@ -13,6 +13,8 @@ const (
 	CmdLog     CommandType = "log"
 	CmdCorrect CommandType = "correct"
 	CmdDelete  CommandType = "delete"
+	CmdPlan    CommandType = "plan"
+	CmdUnplan  CommandType = "unplan"
 )
 
 type Command struct {
@@ -21,7 +23,7 @@ type Command struct {
 	Description string
 }
 
-var cmdPattern = regexp.MustCompile(`(?m)^/(log|correct|delete)\s*(.*)$`)
+var cmdPattern = regexp.MustCompile(`(?m)^/(log|correct|delete|plan|unplan)\s*(.*)$`)
 var durationPattern = regexp.MustCompile(`^(?:(\d+)h)?(?:(\d+)m)?\s*(.*)$`)
 
 // Parse extracts the first Billbird slash command from a comment body.
@@ -37,6 +39,9 @@ func Parse(body string) (*Command, error) {
 
 	if cmdType == CmdDelete {
 		return &Command{Type: CmdDelete}, nil
+	}
+	if cmdType == CmdUnplan {
+		return &Command{Type: CmdUnplan}, nil
 	}
 
 	if args == "" {

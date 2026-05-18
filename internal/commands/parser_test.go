@@ -91,6 +91,51 @@ func TestParse(t *testing.T) {
 			body: "/log 120m",
 			want: &Command{Type: CmdLog, Minutes: 120},
 		},
+		{
+			name: "plan hours",
+			body: "/plan 8h",
+			want: &Command{Type: CmdPlan, Minutes: 480},
+		},
+		{
+			name: "plan with description",
+			body: "/plan 4h Initial scope estimate",
+			want: &Command{Type: CmdPlan, Minutes: 240, Description: "Initial scope estimate"},
+		},
+		{
+			name: "plan combined",
+			body: "/plan 1h30m",
+			want: &Command{Type: CmdPlan, Minutes: 90},
+		},
+		{
+			name:    "plan missing duration",
+			body:    "/plan",
+			wantErr: true,
+		},
+		{
+			name:    "plan zero duration",
+			body:    "/plan 0h",
+			wantErr: true,
+		},
+		{
+			name:    "plan invalid duration",
+			body:    "/plan abc",
+			wantErr: true,
+		},
+		{
+			name: "unplan",
+			body: "/unplan",
+			want: &Command{Type: CmdUnplan},
+		},
+		{
+			name: "unplan with trailing text ignored",
+			body: "/unplan because scope shrank",
+			want: &Command{Type: CmdUnplan},
+		},
+		{
+			name: "plan in middle of text",
+			body: "Heads up:\n/plan 6h\nThanks",
+			want: &Command{Type: CmdPlan, Minutes: 360},
+		},
 	}
 
 	for _, tt := range tests {
