@@ -24,6 +24,11 @@
 - `000007_create_plan_entries` — new table with `plan_status` enum and the partial unique index.
 - `000008_create_api_tokens` — new table for bearer-token storage and audit fields.
 
+### Integration tests
+- Added `internal/integration` (build tag `integration`) with eight tests that exercise the new code paths against a real Postgres spun up via `embedded-postgres`. Covered: migrations apply on an empty database, partial unique index rejects duplicate active plans, supersede chain walks both directions, plan-vs-actual classifier against real data, token generate / verify / revoke, last-used throttle, bearer middleware over HTTP including ex-member rejection. Run with `go test -tags=integration ./internal/integration/...`.
+- Refactor: `APIAuthDependencies.Membership` is now the `MembershipPolicy` interface (`IsAllowed(username) bool`); tests pass a deterministic fake.
+- `db.MigrateFrom(databaseURL, sourceURL)` added so tests can apply migrations from an absolute file:// URL independent of CWD; `db.Migrate(databaseURL)` continues to use the default `file://migrations`.
+
 ## 2026-04-12 — REST API, OAuth, admin panel, org-gated auth, CLI wrapper
 
 ### Added

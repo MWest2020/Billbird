@@ -34,13 +34,21 @@ func GetAPIAuth(r *http.Request) *APIAuthContext {
 	return v
 }
 
+// MembershipPolicy decides whether a GitHub user is still allowed to
+// act through Billbird. Implemented in production by MembershipChecker
+// (which talks to GitHub through the App's installation tokens); test
+// code substitutes a deterministic fake.
+type MembershipPolicy interface {
+	IsAllowed(username string) bool
+}
+
 // APIAuthDependencies bundles the collaborators the bearer-and-cookie
 // middleware needs. Both fields may be nil in narrow contexts (e.g. tests),
 // but the middleware will reject every request in that case.
 type APIAuthDependencies struct {
-	Cookie     *Handler           // for cookie-path session validation
-	Tokens     *apitoken.Store    // for bearer-path token verification
-	Membership *MembershipChecker // re-check ALLOWED_ORGS for token requests
+	Cookie     *Handler         // for cookie-path session validation
+	Tokens     *apitoken.Store  // for bearer-path token verification
+	Membership MembershipPolicy // re-check ALLOWED_ORGS for token requests
 }
 
 // RequireAPIAuth accepts either a valid session cookie OR a valid bearer
