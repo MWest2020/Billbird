@@ -69,17 +69,24 @@ func main() {
 	}
 	authHandler := auth.NewHandler(authCfg, pool)
 
-	membership := auth.NewMembershipChecker(ghClient, cfg.AllowedOrgs, 5*time.Minute)
-	if err := membership.PrimeInstallations(); err != nil {
-		// Non-fatal: a fresh app may have no installations yet. Token auth
-		// will refresh on first miss.
-		log.Printf("warn: priming installations failed: %v", err)
+	var policy auth.MembershipPolicy
+	if os.Getenv("BILLBIRD_DEV_MEMBERSHIP_BYPASS") == "true" {
+		log.Print("!!! BILLBIRD_DEV_MEMBERSHIP_BYPASS=true: every bearer token is treated as a member of an allowed org. NEVER use this in production. !!!")
+		policy = devAllowAllPolicy{}
+	} else {
+		checker := auth.NewMembershipChecker(ghClient, cfg.AllowedOrgs, 5*time.Minute)
+		if err := checker.PrimeInstallations(); err != nil {
+			// Non-fatal: a fresh app may have no installations yet. Token auth
+			// will refresh on first miss.
+			log.Printf("warn: priming installations failed: %v", err)
+		}
+		policy = checker
 	}
 
 	apiAuthDeps := auth.APIAuthDependencies{
 		Cookie:     authHandler,
 		Tokens:     tokenStore,
-		Membership: membership,
+		Membership: policy,
 	}
 
 	apiHandler := api.NewHandler(pool, timeEntryStore, planEntryStore, tokenStore)
@@ -133,3 +140,11 @@ func envOrDefault(key, def string) string {
 	}
 	return def
 }
+
+// devAllowAllPolicy unconditionally allows any GitHub user. Used only
+// when BILLBIRD_DEV_MEMBERSHIP_BYPASS=true is set explicitly. The
+// startup banner warns operators that this is a development-only
+// shortcut and must never be enabled in production.
+type devAllowAllPolicy struct{}
+
+func (devAllowAllPolicy) IsAllowed(string) bool { return true }

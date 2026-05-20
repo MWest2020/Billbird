@@ -29,6 +29,11 @@
 - Refactor: `APIAuthDependencies.Membership` is now the `MembershipPolicy` interface (`IsAllowed(username) bool`); tests pass a deterministic fake.
 - `db.MigrateFrom(databaseURL, sourceURL)` added so tests can apply migrations from an absolute file:// URL independent of CWD; `db.Migrate(databaseURL)` continues to use the default `file://migrations`.
 
+### Dev helpers and smoke harness
+- `cmd/smokeseed` — one-shot binary that inserts a bearer token and a sample plan against a running Billbird database. Prints the plaintext token to stdout. Intended for local smoke runs only. `DATABASE_URL=... go run ./cmd/smokeseed`.
+- `BILLBIRD_DEV_MEMBERSHIP_BYPASS=true` — main.go honours this dev-only env var to short-circuit the GitHub org membership check, so a local smoke run does not require a registered GitHub App. The startup banner prints a loud warning. Documented in `docs/configuration.md` as not-for-production.
+- Live smoke verified on 2026-05-20: started Postgres → ran the binary against it → migrations applied → seeded token + plan → curled `/api/v1/plans` and `/api/v1/issues/.../plan-vs-actual` end to end → 200 with the seeded plan; without auth → 401; with bogus token → 401; with valid token but bypass off → 401 (membership check refused, correct security behaviour).
+
 ## 2026-04-12 — REST API, OAuth, admin panel, org-gated auth, CLI wrapper
 
 ### Added
