@@ -93,6 +93,19 @@ HTMX-based server-side rendered UI. Calls the REST API internally. GitHub OAuth 
 - **No physical deletes**: All state changes through status fields and correction chains
 - **UTC timestamps everywhere**: Optional timezone on user profile for display only
 - **API shape controlled by billbird-core**: PostgREST explicitly out
+- **Single-tenant per instance**: one Billbird deployment serves exactly one organisation (see Deployment topology)
+
+## Deployment topology
+
+Billbird is deployed **one instance per organisation**. Each instance owns its own Postgres database, its own GitHub App registration, and its own secret store. There is no `organization_id` column on any table — tenant isolation is provided by the deployment boundary, not by the schema.
+
+This shape has three consequences that ripple through the rest of the design:
+
+- **API tokens are user-scoped, not org-scoped.** Each instance already belongs to one org, so a token only needs to identify a user.
+- **Backups are per-instance.** No data needs to be sliced out of a shared database when an organisation rotates retention policy.
+- **Future tables follow the same rule.** A new domain table introduced by a future change does not carry a tenant-discriminator column. Multi-tenant SaaS hosting is explicitly out of scope for v2; any proposal that would change this must explicitly revise the [`billbird-org-scoping` change](../openspec/changes/archive/) and provide a migration plan for existing single-tenant deployments.
+
+`ALLOWED_ORGS` may still contain multiple comma-separated organisations, for the consulting-team case where the same operator works under more than one GitHub org but shares one Billbird instance by design. The single-tenant rule still holds: a Billbird instance belongs to one operator, even when that operator's work spans multiple GitHub orgs.
 
 ## Project structure
 
