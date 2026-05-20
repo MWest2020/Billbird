@@ -215,6 +215,55 @@ func (c *Client) IsOrgMember(installationID int64, org, username string) (bool, 
 	return resp.StatusCode == http.StatusNoContent, nil
 }
 
+// Installation holds the GitHub App installation identity needed for org
+// membership checks. Account is either an organisation login or a user login.
+type Installation struct {
+	ID      int64
+	Account string
+}
+
+// ListInstallations returns every installation of this GitHub App. Used at
+// startup to map ALLOWED_ORGS to installation IDs.
+func (c *Client) ListInstallations() ([]Installation, error) {
+	jwtToken, err := c.generateJWT()
+	if err != nil {
+		return nil, fmt.Errorf("generating JWT: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", "https://api.github.com/app/installations?per_page=100", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("listing installations: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list installations failed (%d): %s", resp.StatusCode, respBody)
+	}
+
+	var payload []struct {
+		ID      int64 `json:"id"`
+		Account struct {
+			Login string `json:"login"`
+		} `json:"account"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decoding installations response: %w", err)
+	}
+
+	out := make([]Installation, 0, len(payload))
+	for _, p := range payload {
+		out = append(out, Installation{ID: p.ID, Account: p.Account.Login})
+	}
+	return out, nil
+}
+
 // InstallationIDFromEvent extracts the installation ID from a webhook payload.
 func InstallationIDFromEvent(payload map[string]any) (int64, error) {
 	inst, ok := payload["installation"].(map[string]any)

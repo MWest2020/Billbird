@@ -10,17 +10,21 @@ VERSION="0.1.0"
 usage() {
   cat <<'EOF'
 Usage:
-  billbird log    <issue> <duration> [description]
+  billbird log     <issue> <duration> [description]
   billbird correct <issue> <duration> [description]
   billbird delete  <issue>
+  billbird plan    <issue> <duration> [description]
+  billbird unplan  <issue>
 
   <issue>     Issue number (e.g. 42) or full reference (e.g. org/repo#42)
-  <duration>  Time spent (e.g. 2h, 30m, 1h30m)
+  <duration>  Time spent or estimated (e.g. 2h, 30m, 1h30m)
 
 Examples:
   billbird log 42 2h
   billbird log 42 1h30m "Fixed auth bug"
   billbird correct 42 3h
+  billbird plan 42 8h "Initial scope estimate"
+  billbird unplan 42
   billbird delete 42
   billbird log org/repo#42 2h "Code review"
 
@@ -40,7 +44,7 @@ CMD="$1"
 shift
 
 case "$CMD" in
-  log|correct)
+  log|correct|plan)
     [[ $# -lt 2 ]] && die "usage: billbird $CMD <issue> <duration> [description]"
     ISSUE="$1"
     DURATION="$2"
@@ -58,10 +62,10 @@ case "$CMD" in
       BODY="/$CMD $DURATION"
     fi
     ;;
-  delete)
-    [[ $# -lt 1 ]] && die "usage: billbird delete <issue>"
+  delete|unplan)
+    [[ $# -lt 1 ]] && die "usage: billbird $CMD <issue>"
     ISSUE="$1"
-    BODY="/delete"
+    BODY="/$CMD"
     ;;
   version|--version|-v)
     echo "billbird $VERSION"
@@ -71,7 +75,7 @@ case "$CMD" in
     usage
     ;;
   *)
-    die "unknown command '$CMD'. Use: log, correct, delete"
+    die "unknown command '$CMD'. Use: log, correct, delete, plan, unplan"
     ;;
 esac
 

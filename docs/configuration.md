@@ -23,6 +23,12 @@ These must be set for the application to start. If any are missing, the applicat
 | `GITHUB_CLIENT_SECRET` | OAuth client secret (for admin panel login) | *(none)* |
 | `SESSION_SECRET` | Secret for signing session cookies | *(none)* |
 
+## Development-only flags
+
+| Variable | What it does | Why |
+|----------|--------------|-----|
+| `BILLBIRD_DEV_MEMBERSHIP_BYPASS` | When set to `true`, every bearer token is treated as belonging to an allowed-org member. The startup log prints a banner so the override is visible. | Local smoke testing without a registered GitHub App. **Must not be set in production.** The setting widens API access from "ALLOWED_ORGS members" to "anyone with any valid token". |
+
 ## Notes
 
 ### Private key format

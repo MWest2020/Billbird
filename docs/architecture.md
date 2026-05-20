@@ -47,6 +47,14 @@ Extracts `/log`, `/correct`, `/delete` from issue comment bodies. Parses duratio
 
 Manages the time entries table. Handles the correction chain (create, supersede, soft-delete). All writes go through this store.
 
+### Plan entry store (`internal/planentry`)
+
+Manages the `plan_entries` table for `/plan` and `/unplan`. Same correction-chain pattern as `timeentry`, but plans carry no `client_id` — they are forecasts, not billable. A partial unique index enforces at most one `active` plan per `(repository, issue_number)`. Also exposes `ComputePlanVsActual` which is the source of truth for the dashboard's variance column and the `plan-vs-actual` API.
+
+### API token store (`internal/apitoken`)
+
+Issues, verifies, and revokes bearer tokens used on `/api/v1/*` by non-browser consumers. Tokens are hashed at rest with bcrypt (cost 12); the plaintext is shown to the user exactly once at creation.
+
 ### Client resolver (`internal/client`)
 
 Matches issue labels to client records via label mappings. Handles repository-specific vs. global precedence.
@@ -61,7 +69,7 @@ JSON endpoints for all operations. Consumed by the admin panel and future UIs.
 
 ### Admin panel (`internal/admin`)
 
-HTMX-based server-side rendered UI. Calls the REST API internally. GitHub OAuth for authentication.
+HTMX-based server-side rendered UI. Calls the REST API internally. GitHub OAuth for authentication. New pages: **Plans** (active plans + plan-vs-actual badges per issue) and **API tokens** (create/list/revoke; plaintext shown once at creation).
 
 ## Data flow: /log command
 
@@ -94,13 +102,15 @@ billbird/
   internal/
     api/                  REST API handlers (JSON)
     admin/                HTMX admin panel (consumes API)
-    auth/                 OAuth flow, session management
+    apitoken/             Bearer-token issue/verify/revoke
+    auth/                 OAuth flow, session management, bearer middleware
     client/               Client and label mapping logic
     commands/             Slash command parsing
     config/               Environment variable loading
     cycletime/            Cycle time tracking
     db/                   Database connection, migrations
     github/               GitHub API client
+    planentry/            Plan entry domain logic (/plan, /unplan)
     timeentry/            Time entry domain logic
     webhook/              Webhook handler, signature verification
   migrations/             SQL migration files

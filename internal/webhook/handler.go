@@ -15,6 +15,7 @@ import (
 	"github.com/mwesterweel/billbird/internal/client"
 	"github.com/mwesterweel/billbird/internal/commands"
 	gh "github.com/mwesterweel/billbird/internal/github"
+	"github.com/mwesterweel/billbird/internal/planentry"
 	"github.com/mwesterweel/billbird/internal/timeentry"
 )
 
@@ -24,6 +25,7 @@ type Handler struct {
 	deliveries     *DeliveryStore
 	ghClient       *gh.Client
 	timeEntries    *timeentry.Store
+	planEntries    *planentry.Store
 	clientResolver *client.Resolver
 }
 
@@ -33,6 +35,7 @@ func NewHandler(
 	deliveries *DeliveryStore,
 	ghClient *gh.Client,
 	timeEntries *timeentry.Store,
+	planEntries *planentry.Store,
 ) *Handler {
 	return &Handler{
 		webhookSecret: webhookSecret,
@@ -40,6 +43,7 @@ func NewHandler(
 		deliveries:    deliveries,
 		ghClient:      ghClient,
 		timeEntries:   timeEntries,
+		planEntries:   planEntries,
 	}
 }
 
@@ -179,6 +183,117 @@ func (h *Handler) handleIssueComment(ctx context.Context, body []byte) {
 		h.handleCorrect(ctx, event, cmd)
 	case commands.CmdDelete:
 		h.handleDelete(ctx, event)
+	case commands.CmdPlan:
+		h.handlePlan(ctx, event, cmd)
+	case commands.CmdUnplan:
+		h.handleUnplan(ctx, event)
+	}
+}
+
+func (h *Handler) handlePlan(ctx context.Context, event issueCommentEvent, cmd *commands.Command) {
+	repo := event.Repository.FullName
+	installID := event.Installation.ID
+
+	if h.planEntries == nil {
+		log.Printf("plan store not configured; ignoring /plan on %s#%d", repo, event.Issue.Number)
+		return
+	}
+
+	prev, err := h.planEntries.FindActive(ctx, repo, event.Issue.Number)
+	if err != nil {
+		log.Printf("error finding active plan: %v", err)
+		h.postError(ctx, event, "Failed to look up existing plan. Please try again.")
+		return
+	}
+
+	newPlan := &planentry.Entry{
+		GitHubUserID:     event.Comment.User.ID,
+		GitHubUsername:   event.Comment.User.Login,
+		Repository:       repo,
+		IssueNumber:      event.Issue.Number,
+		DurationMinutes:  cmd.Minutes,
+		Description:      cmd.Description,
+		SourceCommentID:  event.Comment.ID,
+		SourceCommentURL: event.Comment.HTMLURL,
+		CreatedBy:        "user",
+	}
+
+	if prev != nil {
+		// Flip the previous plan's status first so the partial-unique-index
+		// frees up. We backfill the superseded_by link after the new plan has
+		// an ID.
+		if err := h.planEntries.MarkSuperseded(ctx, prev.ID); err != nil {
+			log.Printf("error marking plan %d superseded: %v", prev.ID, err)
+			h.postError(ctx, event, "Failed to supersede existing plan. Please try again.")
+			return
+		}
+	}
+
+	newPlan, err = h.planEntries.Create(ctx, newPlan)
+	if err != nil {
+		log.Printf("error creating plan entry: %v", err)
+		h.postError(ctx, event, "Failed to record plan. Please try again.")
+		return
+	}
+
+	var comment string
+	if prev != nil {
+		if err := h.planEntries.LinkSupersedeChain(ctx, prev.ID, newPlan.ID); err != nil {
+			log.Printf("error linking supersede chain plan %d -> %d: %v", prev.ID, newPlan.ID, err)
+		}
+		comment = fmt.Sprintf("Updated @%s's plan from %s to %s (plan #%d supersedes #%d)",
+			event.Comment.User.Login,
+			commands.FormatDuration(prev.DurationMinutes),
+			commands.FormatDuration(cmd.Minutes),
+			newPlan.ID, prev.ID)
+	} else {
+		comment = fmt.Sprintf("Planned %s on this issue by @%s (plan #%d)",
+			commands.FormatDuration(cmd.Minutes),
+			event.Comment.User.Login,
+			newPlan.ID)
+	}
+	if cmd.Description != "" {
+		comment += " — " + cmd.Description
+	}
+
+	if _, err := h.ghClient.PostComment(installID, repo, event.Issue.Number, comment); err != nil {
+		log.Printf("error posting plan confirmation comment: %v", err)
+	}
+}
+
+func (h *Handler) handleUnplan(ctx context.Context, event issueCommentEvent) {
+	repo := event.Repository.FullName
+	installID := event.Installation.ID
+
+	if h.planEntries == nil {
+		log.Printf("plan store not configured; ignoring /unplan on %s#%d", repo, event.Issue.Number)
+		return
+	}
+
+	prev, err := h.planEntries.FindActive(ctx, repo, event.Issue.Number)
+	if err != nil {
+		log.Printf("error finding active plan: %v", err)
+		h.postError(ctx, event, "Failed to look up active plan. Please try again.")
+		return
+	}
+	if prev == nil {
+		h.postError(ctx, event, "No active plan found on this issue to remove.")
+		return
+	}
+
+	if err := h.planEntries.SoftDelete(ctx, prev.ID, event.Comment.ID, event.Comment.HTMLURL); err != nil {
+		log.Printf("error soft-deleting plan %d: %v", prev.ID, err)
+		h.postError(ctx, event, "Failed to remove plan. Please try again.")
+		return
+	}
+
+	comment := fmt.Sprintf("Removed @%s's plan of %s (plan #%d)",
+		event.Comment.User.Login,
+		commands.FormatDuration(prev.DurationMinutes),
+		prev.ID)
+
+	if _, err := h.ghClient.PostComment(installID, repo, event.Issue.Number, comment); err != nil {
+		log.Printf("error posting unplan confirmation comment: %v", err)
 	}
 }
 

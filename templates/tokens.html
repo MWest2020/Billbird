@@ -1,0 +1,63 @@
+{{if .NewPlaintext}}
+<div class="alert">
+    <strong>Copy your new API token now.</strong>
+    This is the only time it will be shown. If you lose it, revoke and create a new one.
+    <div class="token-plaintext">{{.NewPlaintext}}</div>
+</div>
+{{end}}
+
+<div class="card">
+    <h2>Create token</h2>
+    <p class="text-muted mb-2">
+        Tokens act as you — they can read everything you can read through the API. Treat them like passwords.
+    </p>
+    <form method="post" action="/admin/tokens">
+        <div class="form-group">
+            <label>Label</label>
+            <input type="text" name="label" placeholder="e.g. Manager-MCP" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Create token</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Your tokens</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Label</th>
+                <th>Prefix</th>
+                <th>Created</th>
+                <th>Last used</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Tokens}}
+            <tr>
+                <td>{{.Label}}</td>
+                <td><code>bb_{{.Prefix}}…</code></td>
+                <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+                <td>{{if .LastUsedAt}}{{.LastUsedAt.Format "2006-01-02 15:04"}}{{else}}<span class="text-muted">never</span>{{end}}</td>
+                <td>
+                    {{if .Revoked}}
+                        <span class="badge badge-deleted">revoked</span>
+                    {{else}}
+                        <span class="badge badge-active">active</span>
+                    {{end}}
+                </td>
+                <td>
+                    {{if not .Revoked}}
+                    <form method="post" action="/admin/tokens/{{.ID}}/revoke" style="display:inline">
+                        <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+                    </form>
+                    {{end}}
+                </td>
+            </tr>
+            {{else}}
+            <tr><td colspan="6" class="text-muted">You have no tokens yet.</td></tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>

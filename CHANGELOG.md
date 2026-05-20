@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-05-18 — Plan command and API tokens
+
+### Added
+- **`/plan <duration> [description]`** slash command for forecasting effort per issue. Creates an entry in the new `plan_entries` table; re-running on the same issue supersedes the previous plan via the same chain pattern as `/correct`. Confirmation comment names the plan ID.
+- **`/unplan`** slash command soft-deletes the active plan on an issue, recording the closing comment as a paired reference.
+- **`plan_entries`** Postgres table: same shape as `time_entries` without `client_id`, plus closing-comment columns. A partial unique index enforces at most one active plan per `(repository, issue_number)`.
+- **`api_tokens`** Postgres table: bearer tokens hashed with bcrypt (cost 12), prefix-indexed for the admin listing, never physically deleted.
+- **Bearer-token middleware** on `/api/v1/*` accepting `Authorization: Bearer bb_...`. Reuses the existing session-cookie path; both produce the same handler context. Token requests re-check ALLOWED_ORGS membership against the GitHub API via the App's installation tokens, cached per user for 5 minutes.
+- **REST API endpoints**:
+  - `GET /api/v1/plans`, `GET /api/v1/plans/{id}`, `GET /api/v1/plans/{id}/chain`
+  - `GET /api/v1/issues/{owner}/{repo}/{number}/plan-vs-actual`
+  - `GET /api/v1/tokens`, `POST /api/v1/tokens`, `DELETE /api/v1/tokens/{id}`
+- **Admin panel**: new **Plans** page (per-issue active plan, planned vs logged minutes, variance, status badge) with a per-issue plan-history view. New **API tokens** page (create / list / revoke; plaintext shown exactly once at creation).
+- **CLI wrapper** (`bin/billbird`) gains `plan` and `unplan` verbs.
+- **Docs**: `docs/api-tokens.md` (lifecycle, format, example, security model); `docs/commands.md` describes `/plan` and `/unplan`; `docs/architecture.md` records the two new internal packages.
+
+### Changed
+- `/api/v1/*` now requires authentication (cookie or bearer). Previously all `/api/v1/*` routes were open — this brings the API surface up to the rest of the application's auth posture.
+- `internal/webhook.NewHandler` takes a `*planentry.Store`; `internal/admin.NewHandler` and `internal/api.NewHandler` take `*planentry.Store` and `*apitoken.Store`. Callers in `cmd/billbird/main.go` need updating to match.
+
+### Schema migrations
+- `000007_create_plan_entries` — new table with `plan_status` enum and the partial unique index.
+- `000008_create_api_tokens` — new table for bearer-token storage and audit fields.
+
+### Integration tests
+- Added `internal/integration` (build tag `integration`) with eight tests that exercise the new code paths against a real Postgres spun up via `embedded-postgres`. Covered: migrations apply on an empty database, partial unique index rejects duplicate active plans, supersede chain walks both directions, plan-vs-actual classifier against real data, token generate / verify / revoke, last-used throttle, bearer middleware over HTTP including ex-member rejection. Run with `go test -tags=integration ./internal/integration/...`.
+- Refactor: `APIAuthDependencies.Membership` is now the `MembershipPolicy` interface (`IsAllowed(username) bool`); tests pass a deterministic fake.
+- `db.MigrateFrom(databaseURL, sourceURL)` added so tests can apply migrations from an absolute file:// URL independent of CWD; `db.Migrate(databaseURL)` continues to use the default `file://migrations`.
+
+### Dev helpers and smoke harness
+- `cmd/smokeseed` — one-shot binary that inserts a bearer token and a sample plan against a running Billbird database. Prints the plaintext token to stdout. Intended for local smoke runs only. `DATABASE_URL=... go run ./cmd/smokeseed`.
+- `BILLBIRD_DEV_MEMBERSHIP_BYPASS=true` — main.go honours this dev-only env var to short-circuit the GitHub org membership check, so a local smoke run does not require a registered GitHub App. The startup banner prints a loud warning. Documented in `docs/configuration.md` as not-for-production.
+- Live smoke verified on 2026-05-20: started Postgres → ran the binary against it → migrations applied → seeded token + plan → curled `/api/v1/plans` and `/api/v1/issues/.../plan-vs-actual` end to end → 200 with the seeded plan; without auth → 401; with bogus token → 401; with valid token but bypass off → 401 (membership check refused, correct security behaviour).
+
 ## 2026-04-12 — REST API, OAuth, admin panel, org-gated auth, CLI wrapper
 
 ### Added

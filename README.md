@@ -27,8 +27,10 @@ Need to fix a mistake? Comment `/correct 3h`. Need to remove it entirely? Commen
 | `/log <duration> [description]` | `/log 1h30m Code review` | Log time on the current issue |
 | `/correct <duration> [description]` | `/correct 2h` | Replace your last entry on this issue |
 | `/delete` | `/delete` | Remove your last entry on this issue |
+| `/plan <duration> [description]` | `/plan 8h` | Forecast effort for this issue |
+| `/unplan` | `/unplan` | Remove the active plan from this issue |
 
-Durations support hours (`2h`), minutes (`45m`), or both (`1h30m`).
+Durations support hours (`2h`), minutes (`45m`), or both (`1h30m`). Plans and log entries live in separate tables: `/log` records actuals, `/plan` records forecasts. The admin panel and the API expose a **plan-vs-actual** view that compares the two.
 
 ## How it works
 
@@ -57,6 +59,7 @@ See [docs/setup.md](docs/setup.md) for GitHub App registration and configuration
 
 - [Setup guide](docs/setup.md) --- GitHub App registration, configuration, deployment
 - [Commands reference](docs/commands.md) --- Slash command syntax and behavior
+- [API tokens](docs/api-tokens.md) --- Bearer tokens for non-browser API consumers
 - [Client attribution](docs/client-attribution.md) --- Mapping GitHub labels to clients
 - [Corrections and deletions](docs/corrections.md) --- How the correction chain works
 - [Architecture](docs/architecture.md) --- System design and API-first approach
