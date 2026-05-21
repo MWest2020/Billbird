@@ -3,6 +3,7 @@ package planentry
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -25,6 +26,10 @@ type Entry struct {
 	SupersededBy      *int64
 	CreatedBy         string
 	CreatedAt         time.Time
+	// Labels snapshots the issue's GitHub labels at create-time. Empty
+	// array if the issue had none; never nil. Lowercase JSON tag aligns
+	// with the API convention for new fields.
+	Labels []string `json:"labels"`
 }
 
 type Store struct {
@@ -35,6 +40,14 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
+// columns lists every column scanned by Get / List paths. Keep
+// SELECT lists and Scan order in sync via this single constant.
+const columns = `id, github_user_id, github_username, repository, issue_number,
+	duration_minutes, description,
+	source_comment_id, source_comment_url,
+	closing_comment_id, closing_comment_url,
+	status, superseded_by, created_by, created_at, labels`
+
 // Create inserts a new plan entry and returns it. The caller is responsible
 // for superseding any prior active plan first if needed.
 func (s *Store) Create(ctx context.Context, e *Entry) (*Entry, error) {
@@ -42,12 +55,12 @@ func (s *Store) Create(ctx context.Context, e *Entry) (*Entry, error) {
 		INSERT INTO plan_entries (
 			github_user_id, github_username, repository, issue_number,
 			duration_minutes, description,
-			source_comment_id, source_comment_url, status, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9)
+			source_comment_id, source_comment_url, status, created_by, labels
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10)
 		RETURNING id, created_at`,
 		e.GitHubUserID, e.GitHubUsername, e.Repository, e.IssueNumber,
 		e.DurationMinutes, nilIfEmpty(e.Description),
-		e.SourceCommentID, e.SourceCommentURL, e.CreatedBy,
+		e.SourceCommentID, e.SourceCommentURL, e.CreatedBy, labelsForInsert(e.Labels),
 	)
 
 	if err := row.Scan(&e.ID, &e.CreatedAt); err != nil {
@@ -57,20 +70,22 @@ func (s *Store) Create(ctx context.Context, e *Entry) (*Entry, error) {
 	return e, nil
 }
 
+func labelsForInsert(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
+}
+
 // FindActive returns the active plan for an issue, or nil if none exists.
 func (s *Store) FindActive(ctx context.Context, repo string, issueNumber int) (*Entry, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT id, github_user_id, github_username, repository, issue_number,
-			duration_minutes, description,
-			source_comment_id, source_comment_url,
-			closing_comment_id, closing_comment_url,
-			status, superseded_by, created_by, created_at
+		SELECT `+columns+`
 		FROM plan_entries
 		WHERE repository = $1 AND issue_number = $2 AND status = 'active'
 		LIMIT 1`,
 		repo, issueNumber,
 	)
-
 	return scanEntry(row)
 }
 
@@ -120,14 +135,7 @@ func (s *Store) SoftDelete(ctx context.Context, planID int64, closingCommentID i
 
 // GetByID returns a single plan entry by ID.
 func (s *Store) GetByID(ctx context.Context, id int64) (*Entry, error) {
-	row := s.pool.QueryRow(ctx, `
-		SELECT id, github_user_id, github_username, repository, issue_number,
-			duration_minutes, description,
-			source_comment_id, source_comment_url,
-			closing_comment_id, closing_comment_url,
-			status, superseded_by, created_by, created_at
-		FROM plan_entries WHERE id = $1`, id)
-
+	row := s.pool.QueryRow(ctx, `SELECT `+columns+` FROM plan_entries WHERE id = $1`, id)
 	return scanEntry(row)
 }
 
@@ -175,18 +183,13 @@ type ListFilter struct {
 	Status      string // "active", "all" — default "active"
 	DateFrom    *time.Time
 	DateTo      *time.Time
+	Labels      []string // AND containment
+	LabelPrefix string   // any label starts with this prefix
 }
 
 // List returns plan entries matching the filter, ordered by created_at desc.
 func (s *Store) List(ctx context.Context, f ListFilter) ([]Entry, error) {
-	query := `
-		SELECT id, github_user_id, github_username, repository, issue_number,
-			duration_minutes, description,
-			source_comment_id, source_comment_url,
-			closing_comment_id, closing_comment_url,
-			status, superseded_by, created_by, created_at
-		FROM plan_entries
-		WHERE 1=1`
+	query := `SELECT ` + columns + ` FROM plan_entries WHERE 1=1`
 	args := []any{}
 	argN := 1
 
@@ -217,6 +220,16 @@ func (s *Store) List(ctx context.Context, f ListFilter) ([]Entry, error) {
 	if f.DateTo != nil {
 		query += fmt.Sprintf(" AND created_at < $%d", argN)
 		args = append(args, *f.DateTo)
+		argN++
+	}
+	if len(f.Labels) > 0 {
+		query += fmt.Sprintf(" AND labels @> $%d", argN)
+		args = append(args, f.Labels)
+		argN++
+	}
+	if prefix := strings.TrimSpace(f.LabelPrefix); prefix != "" {
+		query += fmt.Sprintf(" AND EXISTS (SELECT 1 FROM unnest(labels) l WHERE l LIKE $%d)", argN)
+		args = append(args, prefix+"%")
 		argN++
 	}
 
@@ -251,18 +264,12 @@ type PlanVsActual struct {
 }
 
 // ComputePlanVsActual returns the plan-vs-actual aggregate for a single issue.
-// Logged minutes count active time entries only. Status values:
-//   - "no_plan"    — no active plan, regardless of logged minutes
-//   - "under"      — logged < planned by more than 5%
-//   - "on_target"  — within 5% of planned (in either direction)
-//   - "over"       — logged > planned by more than 5%
 func (s *Store) ComputePlanVsActual(ctx context.Context, repo string, issueNumber int) (*PlanVsActual, error) {
 	pva := &PlanVsActual{
 		Repository:  repo,
 		IssueNumber: issueNumber,
 	}
 
-	// Planned: active plan for the issue
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, duration_minutes FROM plan_entries
 		WHERE repository = $1 AND issue_number = $2 AND status = 'active'
@@ -271,7 +278,6 @@ func (s *Store) ComputePlanVsActual(ctx context.Context, repo string, issueNumbe
 	var planMins int
 	err := row.Scan(&planID, &planMins)
 	if err == pgx.ErrNoRows {
-		// no plan
 		planID = 0
 		planMins = 0
 	} else if err != nil {
@@ -281,7 +287,6 @@ func (s *Store) ComputePlanVsActual(ctx context.Context, repo string, issueNumbe
 		pva.PlannedMins = planMins
 	}
 
-	// Logged: sum active time entries
 	var loggedMins *int
 	err = s.pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(duration_minutes), 0) FROM time_entries
@@ -304,7 +309,6 @@ func classifyStatus(planned, logged int) string {
 	if planned == 0 {
 		return "no_plan"
 	}
-	// 5% tolerance window, rounded outward so single-minute floats don't shift status
 	tolerance := planned * 5 / 100
 	if tolerance < 1 {
 		tolerance = 1
@@ -328,6 +332,27 @@ type rowScanner interface {
 
 func scanEntry(row rowScanner) (*Entry, error) {
 	e := &Entry{}
+	if err := scanInto(row, e); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return e, nil
+}
+
+func scanEntryRow(rows pgx.Rows) (*Entry, error) {
+	e := &Entry{}
+	if err := scanInto(rows, e); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// scanInto centralises the scan-and-coerce dance. Description and the
+// closing-comment fields stay nullable in the DB but become empty
+// strings / nil pointers on the struct.
+func scanInto(row rowScanner, e *Entry) error {
 	var desc, closingURL *string
 	var closingID *int64
 	err := row.Scan(
@@ -335,42 +360,23 @@ func scanEntry(row rowScanner) (*Entry, error) {
 		&e.DurationMinutes, &desc,
 		&e.SourceCommentID, &e.SourceCommentURL,
 		&closingID, &closingURL,
-		&e.Status, &e.SupersededBy, &e.CreatedBy, &e.CreatedAt,
+		&e.Status, &e.SupersededBy, &e.CreatedBy, &e.CreatedAt, &e.Labels,
 	)
 	if err == pgx.ErrNoRows {
-		return nil, nil
+		return pgx.ErrNoRows
 	}
 	if err != nil {
-		return nil, fmt.Errorf("scanning plan entry: %w", err)
+		return fmt.Errorf("scanning plan entry: %w", err)
 	}
 	if desc != nil {
 		e.Description = *desc
 	}
 	e.ClosingCommentID = closingID
 	e.ClosingCommentURL = closingURL
-	return e, nil
-}
-
-func scanEntryRow(rows pgx.Rows) (*Entry, error) {
-	e := &Entry{}
-	var desc, closingURL *string
-	var closingID *int64
-	err := rows.Scan(
-		&e.ID, &e.GitHubUserID, &e.GitHubUsername, &e.Repository, &e.IssueNumber,
-		&e.DurationMinutes, &desc,
-		&e.SourceCommentID, &e.SourceCommentURL,
-		&closingID, &closingURL,
-		&e.Status, &e.SupersededBy, &e.CreatedBy, &e.CreatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("scanning plan entry: %w", err)
+	if e.Labels == nil {
+		e.Labels = []string{}
 	}
-	if desc != nil {
-		e.Description = *desc
-	}
-	e.ClosingCommentID = closingID
-	e.ClosingCommentURL = closingURL
-	return e, nil
+	return nil
 }
 
 func nilIfEmpty(s string) *string {

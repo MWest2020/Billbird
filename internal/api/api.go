@@ -58,9 +58,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware func(http.Ha
 func (h *Handler) ListTimeEntries(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := timeentry.ListFilter{
-		Status:   q.Get("status"),
-		Repo:     q.Get("repo"),
-		Username: q.Get("username"),
+		Status:      q.Get("status"),
+		Repo:        q.Get("repo"),
+		Username:    q.Get("username"),
+		Labels:      q["label"], // repeatable
+		LabelPrefix: q.Get("label_prefix"),
 	}
 
 	if v := q.Get("client_id"); v != "" {
@@ -402,8 +404,10 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListPlans(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := planentry.ListFilter{
-		Status: q.Get("status"),
-		Repo:   q.Get("repository"),
+		Status:      q.Get("status"),
+		Repo:        q.Get("repository"),
+		Labels:      q["label"],
+		LabelPrefix: q.Get("label_prefix"),
 	}
 	if v := q.Get("issue"); v != "" {
 		n, err := strconv.Atoi(v)

@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-05-21 — Labels passthrough: snapshot issue labels onto every entry
+
+### Added
+- New column `labels TEXT[] NOT NULL DEFAULT '{}'` on `time_entries` and `plan_entries`, populated at log/plan/correct time from the issue's GitHub labels. GIN indexes (`idx_time_entries_labels`, `idx_plan_entries_labels`) keep containment queries cheap.
+- New REST query parameters on `/api/v1/time-entries` and `/api/v1/plans`:
+  - `?label=foo&label=bar` — AND containment (every label must be present)
+  - `?label_prefix=wbso:` — at least one label starts with this prefix
+- Response payloads expose `labels` (lowercase JSON tag) on every entry; empty issues yield `[]`, never `null`.
+- Admin entries table renders label chips below the description.
+- New documentation `docs/labels.md` covering conventions (`client:`, `type:`, `wbso:`, `strippenkaart:`, `internal:`), snapshot semantics, query examples, and explicit non-goals (no budget tracking, no label registry, no relabel-to-fix-history).
+
+### Why
+One label-passthrough mechanism replaces what would otherwise be four separate dimension-specific changes (strippenkaart, WBSO, work-type, internal hours). GitHub is the source of truth for what labels exist; Billbird stores the snapshot per entry. Reports slice on label-prefix in SQL. Budgets remain external (contract / spreadsheet) — Billbird answers "how many hours on label X?" and comparison is the operator's job.
+
+### Tested
+- Unit tests in `internal/timeentry/labels_test.go` and `internal/planentry/labels_test.go` — JSON shape (`labels:[]` not `null`), nil-coercion at insert.
+- Integration tests in `internal/integration/labels_test.go` — round-trip through real Postgres, single-label containment, AND containment, prefix filter, empty-labels round-trip.
+- Live smoke 2026-05-21 against the real Billbird-test App on `MWest2020/Billbird`: created issue #8 with labels `[wbso:speur, type:development, strippenkaart:smoke-test]`, posted `/log 2h`, confirmed via `/api/v1/time-entries?label_prefix=wbso:` that all three labels round-trip correctly. Containment query with two labels filters as expected.
+
+### No-op for existing rows
+Migration is additive: `ADD COLUMN labels TEXT[] NOT NULL DEFAULT '{}'`. Existing rows get an empty array — they continue to behave exactly as before, just with `labels: []` on their JSON shape.
+
 ## 2026-05-21 — Membership check now handles personal-account installations (#6)
 
 ### Fixed
