@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-05-21 — Dev-time hook documentation (no code)
+
+### Documentation
+- New `docs/dev-time-hook.md` describing an optional pre-commit Claude Code hook that suggests a `Time: <duration>` footer on each `git commit`. The dev confirms or edits before commit. The footer becomes a second time-source alongside `/log` issue comments.
+- Cross-references in `docs/commands.md` and `README.md`.
+
+### Scope
+Docs only — no Billbird code, no schema, no behaviour change. Devs who opt in copy a JSON snippet into `~/.claude/settings.json` and a small shell script into `~/.claude/billbird-time-hook.sh`.
+
+### Future: reconciliation
+A planned Gitsweeper tool will pull `Time:` footers from commits, compare against Billbird's `/log` entries grouped by issue, and surface drift. Not shipped here.
+
 ## 2026-05-21 — Labels passthrough: snapshot issue labels onto every entry
 
 ### Added

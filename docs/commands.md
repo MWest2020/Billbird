@@ -4,6 +4,8 @@ Billbird recognizes slash commands in GitHub issue comments. Commands must appea
 
 There are two command families: **time-logging** (`/log`, `/correct`, `/delete`) records actual time, and **planning** (`/plan`, `/unplan`) records forecast time. Both follow the same non-destructive correction-chain pattern. Every entry also snapshots the issue's GitHub labels at the moment of the comment, so reports can slice on strippenkaart, WBSO, work-type, and other label-driven dimensions — see [docs/labels.md](labels.md).
 
+A complementary, optional path is the [dev-time hook](dev-time-hook.md) — a local pre-commit hook that suggests a `Time:` footer on each commit. The two sources coexist; a future Gitsweeper tool will reconcile them.
+
 ## /log
 
 Log time on the current issue.
