@@ -216,10 +216,14 @@ func (c *Client) IsOrgMember(installationID int64, org, username string) (bool, 
 }
 
 // Installation holds the GitHub App installation identity needed for org
-// membership checks. Account is either an organisation login or a user login.
+// membership checks. Account is the login (organisation or user) the App is
+// installed on; AccountType is either "Organization" or "User" and drives
+// the membership-check dispatch (orgs need the /orgs members API; user
+// installations are trivially owned by that one user).
 type Installation struct {
-	ID      int64
-	Account string
+	ID          int64
+	Account     string
+	AccountType string
 }
 
 // ListInstallations returns every installation of this GitHub App. Used at
@@ -251,6 +255,7 @@ func (c *Client) ListInstallations() ([]Installation, error) {
 		ID      int64 `json:"id"`
 		Account struct {
 			Login string `json:"login"`
+			Type  string `json:"type"`
 		} `json:"account"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -259,7 +264,11 @@ func (c *Client) ListInstallations() ([]Installation, error) {
 
 	out := make([]Installation, 0, len(payload))
 	for _, p := range payload {
-		out = append(out, Installation{ID: p.ID, Account: p.Account.Login})
+		out = append(out, Installation{
+			ID:          p.ID,
+			Account:     p.Account.Login,
+			AccountType: p.Account.Type,
+		})
 	}
 	return out, nil
 }

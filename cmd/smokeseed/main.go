@@ -50,6 +50,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("generate token: %v", err)
 	}
+	// Print the token immediately so it lands in stdout even when the
+	// optional plan-creation step below fails (e.g. the issue already
+	// has an active plan and the partial-unique-index trips).
+	fmt.Printf("TOKEN=%s\n", tok.Plaintext)
 
 	plan, err := planentry.NewStore(pool).Create(
 		context.Background(),
@@ -66,9 +70,9 @@ func main() {
 		},
 	)
 	if err != nil {
-		log.Fatalf("create plan: %v", err)
+		log.Printf("warn: create plan (non-fatal, token still issued): %v", err)
+		return
 	}
 
-	fmt.Printf("TOKEN=%s\n", tok.Plaintext)
 	fmt.Printf("PLAN_ID=%d\n", plan.ID)
 }
