@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-05-21 — Membership check now handles personal-account installations (#6)
+
+### Fixed
+- `MembershipChecker` no longer denies a request when the App is installed on a **personal account** (not an organisation). The previous code unconditionally called `GET /orgs/{org}/members/{user}`, which returns 404 for personal accounts, so a developer testing their own App from their own GitHub account would be rejected (status `user no longer authorised`).
+- `gh.Installation` gains an `AccountType` field populated from the GitHub API's `account.type` (`User` or `Organization`).
+- Membership dispatch:
+  - **User installation** — the owner of that personal namespace is the only "member"; allow when the requesting login equals the account login. No GitHub API call.
+  - **Organization installation** — existing `/orgs/{org}/members/{user}` check.
+  - **Unknown account type** — refuse rather than guess. Logged.
+
+### Tested
+- Eight new unit tests in `internal/auth/membership_test.go` against a fake gh-client covering: personal-account owner allow, personal-account non-owner deny, organisation member allow + non-member deny, mixed allowed-orgs (personal + org), unknown account type refused, case-sensitivity guard, cache TTL behaviour, refresh-error-non-fatal, `PrimeInstallations` cache.
+- Refactor: `MembershipChecker` now depends on the unexported `membershipGHClient` interface; `*gh.Client` still satisfies it.
+- Live smoke 2026-05-21 against the actual Billbird-test App on `MWest2020/Billbird` with bypass **off**: bearer-authenticated `/api/v1/issues/MWest2020/Billbird/5/plan-vs-actual` returns 200 with the expected payload. Earlier (issue #6) the same call returned 401 `user no longer authorised`.
+
+### Dev helper
+- `cmd/smokeseed` prints the bearer token immediately after generation and treats a duplicate-active-plan error as non-fatal (token is still useful on repeat runs).
+
 ## 2026-05-18 — Deployment topology committed: one instance per organisation
 
 ### Documentation
