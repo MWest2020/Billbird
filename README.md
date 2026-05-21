@@ -63,6 +63,7 @@ See [docs/setup.md](docs/setup.md) for GitHub App registration and configuration
 
 - [Setup guide](docs/setup.md) --- GitHub App registration, configuration, deployment
 - [Commands reference](docs/commands.md) --- Slash command syntax and behavior
+- [Labels](docs/labels.md) --- Label conventions (strippenkaart, WBSO, type, internal) and how to query them
 - [API tokens](docs/api-tokens.md) --- Bearer tokens for non-browser API consumers
 - [Client attribution](docs/client-attribution.md) --- Mapping GitHub labels to clients
 - [Corrections and deletions](docs/corrections.md) --- How the correction chain works

@@ -594,6 +594,7 @@ type entryView struct {
 	SourceCommentURL string
 	PlanBadge        string // under | on_target | over | no_plan | "" when plans not loaded
 	PlanSummary      string // e.g. "8h / 6h"
+	Labels           []string
 }
 
 func (h *Handler) renderLayout(w http.ResponseWriter, data layoutData) {
@@ -648,6 +649,7 @@ func (h *Handler) renderEntriesTable(ctx context.Context, entries []timeentry.En
 			Description:      e.Description,
 			Status:           e.Status,
 			SourceCommentURL: e.SourceCommentURL,
+			Labels:           e.Labels,
 		}
 		if pva, ok := cache[issueKey{Repo: e.Repository, Num: e.IssueNumber}]; ok {
 			v.PlanBadge = pva.Status

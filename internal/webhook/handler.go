@@ -206,6 +206,8 @@ func (h *Handler) handlePlan(ctx context.Context, event issueCommentEvent, cmd *
 		return
 	}
 
+	labels := h.fetchIssueLabels(installID, repo, event.Issue.Number)
+
 	newPlan := &planentry.Entry{
 		GitHubUserID:     event.Comment.User.ID,
 		GitHubUsername:   event.Comment.User.Login,
@@ -216,6 +218,7 @@ func (h *Handler) handlePlan(ctx context.Context, event issueCommentEvent, cmd *
 		SourceCommentID:  event.Comment.ID,
 		SourceCommentURL: event.Comment.HTMLURL,
 		CreatedBy:        "user",
+		Labels:           labels,
 	}
 
 	if prev != nil {
@@ -297,22 +300,30 @@ func (h *Handler) handleUnplan(ctx context.Context, event issueCommentEvent) {
 	}
 }
 
+// fetchIssueLabels reads the issue's current labels. Returns an empty
+// slice on error and logs the failure — a labels-fetch hiccup must not
+// block the /log itself, only mean we record an empty snapshot.
+func (h *Handler) fetchIssueLabels(installID int64, repo string, issueNumber int) []string {
+	labels, err := h.ghClient.GetIssueLabels(installID, repo, issueNumber)
+	if err != nil {
+		log.Printf("error fetching labels for %s#%d: %v", repo, issueNumber, err)
+		return []string{}
+	}
+	return labels
+}
+
 func (h *Handler) handleLog(ctx context.Context, event issueCommentEvent, cmd *commands.Command) {
 	repo := event.Repository.FullName
 	installID := event.Installation.ID
 
-	// Resolve client from labels
+	labels := h.fetchIssueLabels(installID, repo, event.Issue.Number)
+
 	var clientID *int64
 	if h.clientResolver != nil {
-		labels, err := h.ghClient.GetIssueLabels(installID, repo, event.Issue.Number)
+		var err error
+		clientID, err = h.clientResolver.ResolveClient(ctx, labels, repo)
 		if err != nil {
-			log.Printf("error fetching labels for %s#%d: %v", repo, event.Issue.Number, err)
-			// Continue without client attribution
-		} else {
-			clientID, err = h.clientResolver.ResolveClient(ctx, labels, repo)
-			if err != nil {
-				log.Printf("error resolving client for %s#%d: %v", repo, event.Issue.Number, err)
-			}
+			log.Printf("error resolving client for %s#%d: %v", repo, event.Issue.Number, err)
 		}
 	}
 
@@ -327,6 +338,7 @@ func (h *Handler) handleLog(ctx context.Context, event issueCommentEvent, cmd *c
 		SourceCommentID:  event.Comment.ID,
 		SourceCommentURL: event.Comment.HTMLURL,
 		CreatedBy:        "user",
+		Labels:           labels,
 	}
 
 	entry, err := h.timeEntries.Create(ctx, entry)
@@ -362,6 +374,8 @@ func (h *Handler) handleCorrect(ctx context.Context, event issueCommentEvent, cm
 		return
 	}
 
+	labels := h.fetchIssueLabels(installID, repo, event.Issue.Number)
+
 	entry := &timeentry.Entry{
 		GitHubUserID:     event.Comment.User.ID,
 		GitHubUsername:   event.Comment.User.Login,
@@ -373,6 +387,7 @@ func (h *Handler) handleCorrect(ctx context.Context, event issueCommentEvent, cm
 		SourceCommentID:  event.Comment.ID,
 		SourceCommentURL: event.Comment.HTMLURL,
 		CreatedBy:        "user",
+		Labels:           labels,
 	}
 
 	entry, err = h.timeEntries.Create(ctx, entry)
