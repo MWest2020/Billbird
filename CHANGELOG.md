@@ -140,3 +140,5 @@ This is a doc-only commit. The running binary continues to honour whatever `ALLO
 - UTC-only timestamps, optional timezone on user profile for display
 - GitHub Projects V2: supplementary GraphQL query for column name resolution
 - Admin access v1: org membership sufficient, no role-based access
+
+smoke-marker 1779476176
