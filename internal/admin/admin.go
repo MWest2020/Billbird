@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -21,6 +22,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+//go:embed templates/*.html
+var templatesFS embed.FS
+
 type Handler struct {
 	pool      *pgxpool.Pool
 	entries   *timeentry.Store
@@ -30,7 +34,7 @@ type Handler struct {
 }
 
 func NewHandler(pool *pgxpool.Pool, entries *timeentry.Store, plans *planentry.Store, tokens *apitoken.Store) (*Handler, error) {
-	tmpl, err := template.ParseGlob("templates/*.html")
+	tmpl, err := template.ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
 	}
