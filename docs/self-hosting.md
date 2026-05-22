@@ -63,9 +63,13 @@ docker compose up -d --build
 
 Migrations run automatically --- new schema changes are applied on startup.
 
-### Reverse proxy
+### Exposing Billbird publicly
 
-For production use, put Billbird behind a reverse proxy with TLS. Example nginx configuration:
+GitHub's webhook delivery and the OAuth admin-panel callback both need a public HTTPS URL. Two common options:
+
+#### Option A: Reverse proxy with TLS (nginx)
+
+If you already operate a reverse proxy on a host with a public IP, point a vhost at Billbird:
 
 ```nginx
 server {
@@ -84,6 +88,33 @@ server {
     }
 }
 ```
+
+#### Option B: Cloudflare Tunnel
+
+If your Billbird host has no public IP (homelab, NAT, VPN-only network), Cloudflare Tunnel exposes it through Cloudflare's edge with no port forwarding. Free TLS, no exposed IP.
+
+1. In **Cloudflare Zero Trust → Networks → Tunnels**, create a tunnel and copy the install token.
+2. On the host, install and run `cloudflared` as a service (Cloudflare provides install commands per OS in the dashboard).
+3. In the tunnel's **Public Hostnames** tab, add:
+   - **Subdomain:** `billbird`
+   - **Domain:** your Cloudflare-managed domain
+   - **Service:** `http://localhost:8080`
+4. Cloudflare auto-provisions a DNS record for `billbird.<your-domain>` pointing at the tunnel.
+
+In Billbird's `.env`:
+
+```
+BASE_URL=https://billbird.your-domain.example
+```
+
+In the GitHub App settings:
+
+- **Callback URL:** `https://billbird.your-domain.example/auth/callback`
+- **Webhook URL:** `https://billbird.your-domain.example/webhook`
+
+#### Development tunneling
+
+For short-lived local testing without a public URL, [smee.io](https://smee.io) or `ngrok` work for the webhook path. They're not suitable for production because the URL changes per session.
 
 ## Kubernetes (Helm)
 

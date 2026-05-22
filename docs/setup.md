@@ -103,12 +103,15 @@ curl http://localhost:8080/healthz
 
 Create a test issue in a repository where the app is installed. Comment `/log 1h test` and verify the bot replies with a confirmation.
 
-## 5. Expose the webhook
+## 5. Expose Billbird publicly
 
-For GitHub to reach your instance, the webhook URL must be publicly accessible. Options:
+GitHub's webhook deliveries and the OAuth admin-panel callback both need a public HTTPS URL. Pick one of the deployment options in [self-hosting.md](self-hosting.md#exposing-billbird-publicly):
 
-- **Development**: Use [smee.io](https://smee.io) or `ngrok` to tunnel local traffic
-- **Production**: Deploy behind a reverse proxy with TLS (see [self-hosting.md](self-hosting.md))
+- **Reverse proxy with TLS** (nginx, Caddy, …) if your host has a public IP
+- **Cloudflare Tunnel** if your host is behind NAT or VPN-only
+- **Development**: [smee.io](https://smee.io) or `ngrok` for short-lived local testing
+
+Once you have a public URL, set `BASE_URL` in `.env` and update the GitHub App's **Callback URL** and **Webhook URL** to match. See [configuration.md](configuration.md#public-url-base_url) for details.
 
 ## Next steps
 

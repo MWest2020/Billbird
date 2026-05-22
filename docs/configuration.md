@@ -19,6 +19,7 @@ These must be set for the application to start. If any are missing, the applicat
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | HTTP server port | `8080` |
+| `BASE_URL` | Public URL Billbird is reachable on. Used to build the OAuth callback (`BASE_URL/auth/callback`); must match the "Callback URL" configured in the GitHub App. | `http://localhost:PORT` |
 | `GITHUB_CLIENT_ID` | OAuth client ID (for admin panel login) | *(none)* |
 | `GITHUB_CLIENT_SECRET` | OAuth client secret (for admin panel login) | *(none)* |
 | `SESSION_SECRET` | Secret for signing session cookies | *(none)* |
@@ -58,6 +59,14 @@ Billbird checks org membership via the GitHub API on every command. No user regi
 ### Admin panel variables
 
 The admin panel requires `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `SESSION_SECRET` to be set. Admin access is granted to members of any org listed in `ALLOWED_ORGS`. Without the panel variables, the webhook endpoint and health check still function, but the admin panel is unavailable.
+
+### Public URL (`BASE_URL`)
+
+When admin panel users log in, Billbird sends them through GitHub OAuth. GitHub redirects back to `BASE_URL/auth/callback`, and that URL must match the **Callback URL** configured in the GitHub App's settings exactly — including scheme (`https`) and port.
+
+If `BASE_URL` is unset Billbird falls back to `http://localhost:PORT`, which works for local development but produces a `redirect_uri mismatch` error from GitHub for any other deployment. Set `BASE_URL` to your real public URL — for example `https://billbird.example.com` — and configure the matching Callback URL in the GitHub App.
+
+The webhook receiver (`POST /webhook`) does not use `BASE_URL`; GitHub's servers reach it directly via the **Webhook URL** field in the GitHub App. Both URLs share the same public host in a typical deployment.
 
 ### Kubernetes
 
