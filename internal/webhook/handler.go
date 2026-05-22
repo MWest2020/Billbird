@@ -14,7 +14,6 @@ import (
 
 	"github.com/mwesterweel/billbird/internal/client"
 	"github.com/mwesterweel/billbird/internal/commands"
-	gh "github.com/mwesterweel/billbird/internal/github"
 	"github.com/mwesterweel/billbird/internal/planentry"
 	"github.com/mwesterweel/billbird/internal/timeentry"
 )
@@ -22,8 +21,8 @@ import (
 type Handler struct {
 	webhookSecret  string
 	allowedOrgs    []string
-	deliveries     *DeliveryStore
-	ghClient       *gh.Client
+	deliveries     DeliveryTracker
+	ghClient       GHClient
 	timeEntries    *timeentry.Store
 	planEntries    *planentry.Store
 	clientResolver *client.Resolver
@@ -32,8 +31,8 @@ type Handler struct {
 func NewHandler(
 	webhookSecret string,
 	allowedOrgs []string,
-	deliveries *DeliveryStore,
-	ghClient *gh.Client,
+	deliveries DeliveryTracker,
+	ghClient GHClient,
 	timeEntries *timeentry.Store,
 	planEntries *planentry.Store,
 ) *Handler {
@@ -87,6 +86,8 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	switch eventType {
 	case "issue_comment":
 		h.handleIssueComment(r.Context(), body)
+	case "pull_request_review_comment":
+		h.handlePullRequestReviewComment(r.Context(), body)
 	case "projects_v2_item":
 		// cycle time tracking — not yet implemented
 	case "pull_request":
@@ -126,26 +127,63 @@ func (h *Handler) verifySignature(body []byte, signature string) bool {
 	return hmac.Equal(sig, expected)
 }
 
+type commentPayload struct {
+	ID      int64  `json:"id"`
+	Body    string `json:"body"`
+	HTMLURL string `json:"html_url"`
+	User    struct {
+		ID    int64  `json:"id"`
+		Login string `json:"login"`
+	} `json:"user"`
+}
+
+type repositoryPayload struct {
+	FullName string `json:"full_name"`
+}
+
+type installationPayload struct {
+	ID int64 `json:"id"`
+}
+
 type issueCommentEvent struct {
-	Action  string `json:"action"`
-	Comment struct {
-		ID      int64  `json:"id"`
-		Body    string `json:"body"`
-		HTMLURL string `json:"html_url"`
-		User    struct {
-			ID    int64  `json:"id"`
-			Login string `json:"login"`
-		} `json:"user"`
-	} `json:"comment"`
-	Issue struct {
+	Action  string         `json:"action"`
+	Comment commentPayload `json:"comment"`
+	Issue   struct {
 		Number int `json:"number"`
 	} `json:"issue"`
-	Repository struct {
-		FullName string `json:"full_name"`
-	} `json:"repository"`
-	Installation struct {
-		ID int64 `json:"id"`
-	} `json:"installation"`
+	Repository   repositoryPayload   `json:"repository"`
+	Installation installationPayload `json:"installation"`
+}
+
+// pullRequestReviewCommentEvent has the same comment + repository + installation
+// shape as issueCommentEvent, but the target number lives on pull_request
+// instead of issue. We normalize into issueCommentEvent so the downstream
+// command dispatch handles both event types identically — GitHub's API treats
+// PR numbers and issue numbers as interchangeable on the comments endpoint.
+type pullRequestReviewCommentEvent struct {
+	Action      string         `json:"action"`
+	Comment     commentPayload `json:"comment"`
+	PullRequest struct {
+		Number int `json:"number"`
+	} `json:"pull_request"`
+	Repository   repositoryPayload   `json:"repository"`
+	Installation installationPayload `json:"installation"`
+}
+
+func (h *Handler) handlePullRequestReviewComment(ctx context.Context, body []byte) {
+	var pr pullRequestReviewCommentEvent
+	if err := json.Unmarshal(body, &pr); err != nil {
+		log.Printf("error parsing pull_request_review_comment event: %v", err)
+		return
+	}
+	event := issueCommentEvent{
+		Action:       pr.Action,
+		Comment:      pr.Comment,
+		Repository:   pr.Repository,
+		Installation: pr.Installation,
+	}
+	event.Issue.Number = pr.PullRequest.Number
+	h.dispatchCommentCommand(ctx, event)
 }
 
 func (h *Handler) handleIssueComment(ctx context.Context, body []byte) {
@@ -154,7 +192,10 @@ func (h *Handler) handleIssueComment(ctx context.Context, body []byte) {
 		log.Printf("error parsing issue_comment event: %v", err)
 		return
 	}
+	h.dispatchCommentCommand(ctx, event)
+}
 
+func (h *Handler) dispatchCommentCommand(ctx context.Context, event issueCommentEvent) {
 	if event.Action != "created" {
 		return
 	}
