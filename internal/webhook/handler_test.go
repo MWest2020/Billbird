@@ -51,17 +51,14 @@ func newFakeDeliveries() *fakeDeliveries {
 	return &fakeDeliveries{processed: map[string]bool{}}
 }
 
-func (f *fakeDeliveries) IsProcessed(_ context.Context, id string) (bool, error) {
+func (f *fakeDeliveries) Claim(_ context.Context, id, _ string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.processed[id], nil
-}
-
-func (f *fakeDeliveries) MarkProcessed(_ context.Context, id, _ string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	if f.processed[id] {
+		return false, nil
+	}
 	f.processed[id] = true
-	return nil
+	return true, nil
 }
 
 const testSecret = "shh"

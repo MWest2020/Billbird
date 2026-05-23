@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
 )
 
 type Client struct {
@@ -20,8 +21,14 @@ type Client struct {
 	privateKey any
 	httpClient *http.Client
 
-	mu               sync.Mutex
-	installTokens    map[int64]tokenEntry
+	mu            sync.Mutex
+	installTokens map[int64]tokenEntry
+
+	// tokenFlight coalesces concurrent token-fetch calls for the same
+	// installationID. Without this, N concurrent webhooks all see the cache
+	// miss and each POST to /app/installations/.../access_tokens — burning
+	// rate-limit and racing the cache write.
+	tokenFlight singleflight.Group
 }
 
 type tokenEntry struct {
@@ -61,6 +68,7 @@ func (c *Client) generateJWT() (string, error) {
 }
 
 func (c *Client) getInstallationToken(installationID int64) (string, error) {
+	// Fast path: cached and still valid (with a 60s safety margin).
 	c.mu.Lock()
 	if entry, ok := c.installTokens[installationID]; ok && time.Now().Before(entry.expiresAt.Add(-60*time.Second)) {
 		c.mu.Unlock()
@@ -68,6 +76,31 @@ func (c *Client) getInstallationToken(installationID int64) (string, error) {
 	}
 	c.mu.Unlock()
 
+	// Slow path: at most one fetch per installationID is in flight at a time;
+	// concurrent callers wait on the same singleflight key and share the
+	// result. See docs/operations.md for why.
+	key := strconv.FormatInt(installationID, 10)
+	tok, err, _ := c.tokenFlight.Do(key, func() (any, error) {
+		// Re-check the cache: while we waited for the singleflight slot, a
+		// previous winner may have populated it.
+		c.mu.Lock()
+		if entry, ok := c.installTokens[installationID]; ok && time.Now().Before(entry.expiresAt.Add(-60*time.Second)) {
+			c.mu.Unlock()
+			return entry.token, nil
+		}
+		c.mu.Unlock()
+
+		return c.fetchInstallationToken(installationID)
+	})
+	if err != nil {
+		return "", err
+	}
+	return tok.(string), nil
+}
+
+// fetchInstallationToken performs the actual POST to GitHub. Always called
+// inside the singleflight slot so it runs at most once per installationID.
+func (c *Client) fetchInstallationToken(installationID int64) (string, error) {
 	jwtToken, err := c.generateJWT()
 	if err != nil {
 		return "", fmt.Errorf("generating JWT: %w", err)

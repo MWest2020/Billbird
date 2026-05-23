@@ -5,9 +5,19 @@ Billbird supports long-lived bearer tokens for the REST API at `/api/v1/*`. Toke
 ## Lifecycle
 
 1. **Create** a token in the admin panel under **API tokens** → *Create token*. Give it a label like `Manager-MCP` so future-you can tell tokens apart.
-2. The plaintext is shown **once** in a highlighted box. Copy it immediately. Billbird stores only a bcrypt hash; the plaintext is unrecoverable after you leave the page.
+2. The plaintext is shown **once** in a highlighted box on the page that the form returns to. Copy it immediately. Billbird stores only a bcrypt hash; the plaintext is unrecoverable after you leave the page.
 3. **Use** the token by setting the `Authorization: Bearer bb_...` header on any `/api/v1/*` request.
 4. **Revoke** any token (your own from the panel; admins can revoke any user's tokens) when it is no longer needed or may have leaked. Revocation takes effect on the next request.
+
+### Why the plaintext is rendered inline, not redirected to
+
+A prior version did `Redirect("/admin/tokens?new_token=" + plaintext)` after generation. That puts the plaintext in:
+
+- **Reverse-proxy access logs** (nginx, Cloudflare, anything in front of Billbird logs the request line by default — query string included).
+- **Browser history** (`https://billbird.example.com/admin/tokens?new_token=bb_…` stays there until the user clears it).
+- **Referer header** of the next navigation from that page, leaking the token to whatever external host the user clicks through to.
+
+The current handler generates the token, then renders the tokens page *in-place* with the plaintext in the response body. There is no redirect and no URL with the secret in it. The page is a normal `POST`-response; a browser refresh shows the standard "Confirm form resubmission" prompt — refusing it is the safe default; confirming it generates a second (unused) token, easy to revoke.
 
 ## Format
 

@@ -65,24 +65,27 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check idempotency
 	deliveryID := r.Header.Get("X-GitHub-Delivery")
+	eventType := r.Header.Get("X-GitHub-Event")
+
+	// Atomic idempotency claim: a single INSERT ... ON CONFLICT DO NOTHING
+	// either wins the row (we process) or sees an existing row (we skip).
+	// Two concurrent receivers for the same delivery_id cannot both win, so
+	// duplicate /log entries from GitHub webhook retries are impossible.
+	// See docs/webhook-idempotency.md for the failure mode this closes.
 	if deliveryID != "" {
-		processed, err := h.deliveries.IsProcessed(r.Context(), deliveryID)
+		claimed, err := h.deliveries.Claim(r.Context(), deliveryID, eventType)
 		if err != nil {
-			log.Printf("error checking delivery: %v", err)
+			log.Printf("error claiming delivery: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if processed {
+		if !claimed {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 	}
 
-	eventType := r.Header.Get("X-GitHub-Event")
-
-	// Route by event type
 	switch eventType {
 	case "issue_comment":
 		h.handleIssueComment(r.Context(), body)
@@ -94,13 +97,6 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		// cycle time tracking — not yet implemented
 	default:
 		// Unknown event, acknowledge and ignore
-	}
-
-	// Mark delivery as processed
-	if deliveryID != "" {
-		if err := h.deliveries.MarkProcessed(r.Context(), deliveryID, eventType); err != nil {
-			log.Printf("error marking delivery processed: %v", err)
-		}
 	}
 
 	w.WriteHeader(http.StatusOK)

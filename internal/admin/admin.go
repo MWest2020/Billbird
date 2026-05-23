@@ -240,6 +240,16 @@ type tokenRow struct {
 }
 
 func (h *Handler) Tokens(w http.ResponseWriter, r *http.Request) {
+	h.renderTokensPage(w, r, "")
+}
+
+// renderTokensPage loads the current token list for the session user and
+// renders the page. newPlaintext is shown exactly once on the page that the
+// generate form returns; it is never persisted, never stored in the URL or a
+// cookie, and never logged. Putting the plaintext in a query string (as a
+// prior version did) leaked it to reverse-proxy access logs, browser
+// history, and Referer headers — see docs/api-tokens.md.
+func (h *Handler) renderTokensPage(w http.ResponseWriter, r *http.Request, newPlaintext string) {
 	session := auth.GetSession(r)
 	if h.tokens == nil {
 		http.Error(w, "tokens not configured", http.StatusServiceUnavailable)
@@ -264,10 +274,6 @@ func (h *Handler) Tokens(w http.ResponseWriter, r *http.Request) {
 			Revoked:    t.Revoked,
 		}
 	}
-
-	// A freshly minted plaintext is delivered via the query string
-	// exactly once. We never persist it; we never reload it.
-	newPlaintext := r.URL.Query().Get("new_token")
 
 	data := layoutData{
 		Title:    "API tokens",
@@ -304,8 +310,9 @@ func (h *Handler) CreateTokenForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect back to the listing carrying the plaintext exactly once.
-	http.Redirect(w, r, "/admin/tokens?new_token="+t.Plaintext, http.StatusSeeOther)
+	// Render the tokens page in-place with the new plaintext. No redirect, so
+	// the plaintext never lands in a URL.
+	h.renderTokensPage(w, r, t.Plaintext)
 }
 
 func (h *Handler) RevokeTokenForm(w http.ResponseWriter, r *http.Request) {

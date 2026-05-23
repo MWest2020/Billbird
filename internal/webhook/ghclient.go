@@ -14,6 +14,9 @@ type GHClient interface {
 // DeliveryTracker dedupes webhook deliveries by GitHub's X-GitHub-Delivery
 // header. Backed by Postgres at runtime; tests stub it.
 type DeliveryTracker interface {
-	IsProcessed(ctx context.Context, deliveryID string) (bool, error)
-	MarkProcessed(ctx context.Context, deliveryID, eventType string) error
+	// Claim atomically records the delivery as being processed and returns
+	// true if the caller is the first (and only) goroutine to do so. Returns
+	// false if another delivery with the same ID has already been claimed —
+	// in that case the caller must skip processing.
+	Claim(ctx context.Context, deliveryID, eventType string) (bool, error)
 }
