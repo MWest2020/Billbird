@@ -2,6 +2,31 @@
 
 Small operational details about how Billbird behaves under load and during incidents. This is not a deployment guide — see [self-hosting.md](self-hosting.md) for that.
 
+## `billbird doctor`
+
+One-shot diagnostic that checks everything Billbird depends on without writing any state. Run it whenever something stops working or after changing GitHub App settings:
+
+```bash
+docker compose exec app billbird doctor
+# or, locally:
+go run ./cmd/billbird doctor
+```
+
+What it checks, in order:
+
+1. **Config** — every required environment variable is set.
+2. **Postgres** — can connect + ping.
+3. **GitHub App credentials** — `GITHUB_PRIVATE_KEY` parses as PEM, signing a JWT succeeds, and `GET /app` returns the same `App ID` the env claims.
+4. **App-level permissions** — `issues` and `pull_requests` are both `write`. Anything less and bot replies will silently 403.
+5. **App-level event subscriptions** — `issue_comment` is subscribed (hard requirement); `pull_request_review_comment` (soft — only matters if you want `/log` inline on PR reviews).
+6. **Per-installation permissions** — for each install, both `issues` and `pull_requests` are `write`. A mismatch here (App says write, install says read) means the install still has pending permissions to accept at `https://github.com/settings/installations`.
+7. **Recent webhook deliveries** — last 10 events with their HTTP status codes, flagged in red when 4xx/5xx. A `404` here is almost always a wrong Webhook URL field; a `401` is a webhook secret mismatch.
+8. **Effective URLs** — the `BASE_URL` Billbird will use and the matching Callback URL + Webhook URL the GitHub App must be configured with.
+
+The command exits non-zero on any concrete problem so it composes cleanly into shell scripts (`billbird doctor && deploy ...`).
+
+## GitHub installation tokens
+
 ## GitHub installation tokens
 
 Billbird authenticates to GitHub as a GitHub App, not as a user. The flow:

@@ -24,6 +24,22 @@ import (
 )
 
 func main() {
+	// Subcommand dispatch. The default (no argv or `serve`) starts the
+	// HTTP server; `doctor` runs a one-shot diagnostic against the
+	// configured Postgres + GitHub App and exits.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "doctor":
+			os.Exit(runDoctor())
+		case "serve", "":
+			// fall through to server start
+		default:
+			fmt.Fprintf(os.Stderr, "billbird: unknown subcommand %q\n", os.Args[1])
+			fmt.Fprintln(os.Stderr, "usage: billbird [serve|doctor]")
+			os.Exit(2)
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
