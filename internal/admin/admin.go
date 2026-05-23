@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -393,7 +394,11 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var clientCount int
-	h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM clients WHERE active = true`).Scan(&clientCount)
+	if err := h.pool.QueryRow(r.Context(),
+		`SELECT COUNT(*) FROM clients WHERE active = true`).Scan(&clientCount); err != nil {
+		log.Printf("admin dashboard: counting clients: %v", err)
+		// non-fatal: render the dashboard with clientCount=0 instead of failing
+	}
 
 	// Render entries partial
 	entriesHTML := h.renderEntriesTable(r.Context(), entries)
@@ -468,16 +473,18 @@ func (h *Handler) Clients(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateClient(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
 	name := r.FormValue("name")
 	if name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
 
-	_, err := h.pool.Exec(r.Context(),
-		`INSERT INTO clients (name) VALUES ($1)`, name)
-	if err != nil {
+	if _, err := h.pool.Exec(r.Context(),
+		`INSERT INTO clients (name) VALUES ($1)`, name); err != nil {
 		log.Printf("error creating client: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -488,22 +495,30 @@ func (h *Handler) CreateClient(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
 
-	// Accept both JSON and form values
+	// Accept both JSON and form values.
 	var active *bool
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "application/json" || contentType == "" {
 		var req map[string]any
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+			log.Printf("admin update client: decode body: %v", err)
+		}
 		if v, ok := req["active"]; ok {
 			b, _ := v.(bool)
 			active = &b
 		}
 	}
-	// Also check HX-Vals which sends JSON in the body
 	if active == nil {
-		r.ParseForm()
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
 		if v := r.FormValue("active"); v != "" {
 			b := v == "true"
 			active = &b
@@ -511,8 +526,17 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if active != nil {
-		h.pool.Exec(r.Context(),
+		tag, err := h.pool.Exec(r.Context(),
 			`UPDATE clients SET active = $1, updated_at = now() WHERE id = $2`, *active, id)
+		if err != nil {
+			log.Printf("admin update client %d: %v", id, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if tag.RowsAffected() == 0 {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html")
@@ -547,13 +571,15 @@ func (h *Handler) Mappings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateMapping(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
 	label := r.FormValue("label_pattern")
-	clientIDStr := r.FormValue("client_id")
 	repo := r.FormValue("repository")
 
-	clientID, _ := strconv.ParseInt(clientIDStr, 10, 64)
-	if label == "" || clientID == 0 {
+	clientID, err := strconv.ParseInt(r.FormValue("client_id"), 10, 64)
+	if err != nil || label == "" || clientID == 0 {
 		http.Error(w, "label and client required", http.StatusBadRequest)
 		return
 	}
@@ -563,10 +589,9 @@ func (h *Handler) CreateMapping(w http.ResponseWriter, r *http.Request) {
 		repoPtr = &repo
 	}
 
-	_, err := h.pool.Exec(r.Context(),
+	if _, err := h.pool.Exec(r.Context(),
 		`INSERT INTO label_mappings (label_pattern, client_id, repository) VALUES ($1, $2, $3)`,
-		label, clientID, repoPtr)
-	if err != nil {
+		label, clientID, repoPtr); err != nil {
 		log.Printf("error creating mapping: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -577,8 +602,16 @@ func (h *Handler) CreateMapping(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteMapping(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	h.pool.Exec(r.Context(), `DELETE FROM label_mappings WHERE id = $1`, id)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.pool.Exec(r.Context(), `DELETE FROM label_mappings WHERE id = $1`, id); err != nil {
+		log.Printf("admin delete mapping %d: %v", id, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprint(w, h.renderMappingsTable(r))
@@ -681,6 +714,7 @@ func (h *Handler) renderClientsTable(r *http.Request) template.HTML {
 	rows, err := h.pool.Query(r.Context(),
 		`SELECT id, name, active, created_at FROM clients ORDER BY name`)
 	if err != nil {
+		log.Printf("admin clients query: %v", err)
 		return template.HTML("<p>Error loading clients</p>")
 	}
 	defer rows.Close()
@@ -688,8 +722,15 @@ func (h *Handler) renderClientsTable(r *http.Request) template.HTML {
 	var clients []clientView
 	for rows.Next() {
 		var c clientView
-		rows.Scan(&c.ID, &c.Name, &c.Active, &c.CreatedAt)
+		if err := rows.Scan(&c.ID, &c.Name, &c.Active, &c.CreatedAt); err != nil {
+			log.Printf("admin clients scan: %v", err)
+			continue
+		}
 		clients = append(clients, c)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("admin clients iterate: %v", err)
+		return template.HTML("<p>Error loading clients</p>")
 	}
 	return h.renderTemplate("clients_table.html", map[string]any{"Clients": clients})
 }
@@ -701,6 +742,7 @@ func (h *Handler) renderMappingsTable(r *http.Request) template.HTML {
 		JOIN clients c ON c.id = lm.client_id
 		ORDER BY lm.label_pattern`)
 	if err != nil {
+		log.Printf("admin mappings query: %v", err)
 		return template.HTML("<p>Error loading mappings</p>")
 	}
 	defer rows.Close()
@@ -708,8 +750,15 @@ func (h *Handler) renderMappingsTable(r *http.Request) template.HTML {
 	var mappings []mappingView
 	for rows.Next() {
 		var m mappingView
-		rows.Scan(&m.ID, &m.Label, &m.ClientName, &m.Repository, &m.CreatedAt)
+		if err := rows.Scan(&m.ID, &m.Label, &m.ClientName, &m.Repository, &m.CreatedAt); err != nil {
+			log.Printf("admin mappings scan: %v", err)
+			continue
+		}
 		mappings = append(mappings, m)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("admin mappings iterate: %v", err)
+		return template.HTML("<p>Error loading mappings</p>")
 	}
 	return h.renderTemplate("mappings_table.html", map[string]any{"Mappings": mappings})
 }
@@ -718,6 +767,7 @@ func (h *Handler) loadClients(r *http.Request) []clientView {
 	rows, err := h.pool.Query(r.Context(),
 		`SELECT id, name, active, created_at FROM clients WHERE active = true ORDER BY name`)
 	if err != nil {
+		log.Printf("admin load clients query: %v", err)
 		return nil
 	}
 	defer rows.Close()
@@ -725,8 +775,14 @@ func (h *Handler) loadClients(r *http.Request) []clientView {
 	var clients []clientView
 	for rows.Next() {
 		var c clientView
-		rows.Scan(&c.ID, &c.Name, &c.Active, &c.CreatedAt)
+		if err := rows.Scan(&c.ID, &c.Name, &c.Active, &c.CreatedAt); err != nil {
+			log.Printf("admin load clients scan: %v", err)
+			continue
+		}
 		clients = append(clients, c)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("admin load clients iterate: %v", err)
 	}
 	return clients
 }

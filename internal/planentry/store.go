@@ -89,10 +89,70 @@ func (s *Store) FindActive(ctx context.Context, repo string, issueNumber int) (*
 	return scanEntry(row)
 }
 
+// ReplacePlan supersedes any active plan on (repo, issueNumber) and creates
+// the new one in a single transaction. When prevID is non-nil the previous
+// plan is flipped to 'superseded' first, the new plan inserted, then the
+// superseded_by foreign key linked — all-or-nothing. A process crash or DB
+// error between the steps leaves the database unchanged.
+//
+// Pass prevID == nil for a fresh plan; ReplacePlan then degenerates to a
+// plain insert wrapped in a (cheap) one-statement transaction. The handler
+// no longer has to think about the supersede dance.
+func (s *Store) ReplacePlan(ctx context.Context, prevID *int64, e *Entry) (*Entry, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) // no-op after Commit
+
+	if prevID != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE plan_entries SET status = 'superseded' WHERE id = $1`,
+			*prevID,
+		); err != nil {
+			return nil, fmt.Errorf("marking plan %d superseded: %w", *prevID, err)
+		}
+	}
+
+	row := tx.QueryRow(ctx, `
+		INSERT INTO plan_entries (
+			github_user_id, github_username, repository, issue_number,
+			duration_minutes, description,
+			source_comment_id, source_comment_url, status, created_by, labels
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10)
+		RETURNING id, created_at`,
+		e.GitHubUserID, e.GitHubUsername, e.Repository, e.IssueNumber,
+		e.DurationMinutes, nilIfEmpty(e.Description),
+		e.SourceCommentID, e.SourceCommentURL, e.CreatedBy, labelsForInsert(e.Labels),
+	)
+	if err := row.Scan(&e.ID, &e.CreatedAt); err != nil {
+		return nil, fmt.Errorf("inserting plan entry: %w", err)
+	}
+	e.Status = "active"
+
+	if prevID != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE plan_entries SET superseded_by = $1 WHERE id = $2`,
+			e.ID, *prevID,
+		); err != nil {
+			return nil, fmt.Errorf("linking chain %d -> %d: %w", *prevID, e.ID, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return e, nil
+}
+
 // MarkSuperseded flips a plan's status to 'superseded' without setting the
 // superseded_by foreign key. This is the first half of a supersede flow —
 // freeing the partial-unique-index slot so a new active plan can be inserted
 // before the new plan's ID exists.
+//
+// Deprecated: callers should prefer ReplacePlan, which wraps the whole
+// supersede dance in a transaction. This method is kept for any direct test
+// or admin use that needs the intermediate state.
 func (s *Store) MarkSuperseded(ctx context.Context, oldID int64) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE plan_entries SET status = 'superseded' WHERE id = $1`,

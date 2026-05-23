@@ -69,10 +69,18 @@ func signBody(body []byte) string {
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-func newTestHandler(gh GHClient, deliveries DeliveryTracker, allowedOrgs []string) *Handler {
+// fakeMembership implements MembershipPolicy for tests. Default-zero value
+// rejects everyone; setting allowAll=true accepts everyone.
+type fakeMembership struct {
+	allowAll bool
+}
+
+func (f fakeMembership) IsAllowed(string) bool { return f.allowAll }
+
+func newTestHandler(gh GHClient, deliveries DeliveryTracker, membership MembershipPolicy) *Handler {
 	return &Handler{
 		webhookSecret: testSecret,
-		allowedOrgs:   allowedOrgs,
+		membership:    membership,
 		deliveries:    deliveries,
 		ghClient:      gh,
 		// timeEntries and planEntries are nil; these tests don't exercise

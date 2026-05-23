@@ -20,3 +20,11 @@ type DeliveryTracker interface {
 	// in that case the caller must skip processing.
 	Claim(ctx context.Context, deliveryID, eventType string) (bool, error)
 }
+
+// MembershipPolicy decides whether a GitHub user is still allowed to issue
+// commands through Billbird. Implementations are expected to be cheap to
+// call (the caller does no caching of its own) — in production the auth
+// package's MembershipChecker caches per-user decisions with a TTL.
+type MembershipPolicy interface {
+	IsAllowed(username string) bool
+}

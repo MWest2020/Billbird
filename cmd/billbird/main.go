@@ -50,16 +50,6 @@ func main() {
 	clientResolver := client.NewResolver(pool)
 	deliveries := webhook.NewDeliveryStore(pool)
 
-	webhookHandler := webhook.NewHandler(
-		cfg.GitHubWebhookSecret,
-		cfg.AllowedOrgs,
-		deliveries,
-		ghClient,
-		timeEntryStore,
-		planEntryStore,
-	)
-	webhookHandler.SetClientResolver(clientResolver)
-
 	authCfg := auth.Config{
 		ClientID:      cfg.GitHubClientID,
 		ClientSecret:  cfg.GitHubClientSecret,
@@ -69,6 +59,9 @@ func main() {
 	}
 	authHandler := auth.NewHandler(authCfg, pool)
 
+	// One membership policy is shared by both webhook command auth and
+	// REST API token auth — same cache, same rate-limit footprint, same
+	// dev-bypass switch.
 	var policy auth.MembershipPolicy
 	if os.Getenv("BILLBIRD_DEV_MEMBERSHIP_BYPASS") == "true" {
 		log.Print("!!! BILLBIRD_DEV_MEMBERSHIP_BYPASS=true: every bearer token is treated as a member of an allowed org. NEVER use this in production. !!!")
@@ -82,6 +75,16 @@ func main() {
 		}
 		policy = checker
 	}
+
+	webhookHandler := webhook.NewHandler(
+		cfg.GitHubWebhookSecret,
+		policy,
+		deliveries,
+		ghClient,
+		timeEntryStore,
+		planEntryStore,
+	)
+	webhookHandler.SetClientResolver(clientResolver)
 
 	apiAuthDeps := auth.APIAuthDependencies{
 		Cookie:     authHandler,

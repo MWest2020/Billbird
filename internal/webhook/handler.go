@@ -20,7 +20,7 @@ import (
 
 type Handler struct {
 	webhookSecret  string
-	allowedOrgs    []string
+	membership     MembershipPolicy
 	deliveries     DeliveryTracker
 	ghClient       GHClient
 	timeEntries    *timeentry.Store
@@ -30,7 +30,7 @@ type Handler struct {
 
 func NewHandler(
 	webhookSecret string,
-	allowedOrgs []string,
+	membership MembershipPolicy,
 	deliveries DeliveryTracker,
 	ghClient GHClient,
 	timeEntries *timeentry.Store,
@@ -38,7 +38,7 @@ func NewHandler(
 ) *Handler {
 	return &Handler{
 		webhookSecret: webhookSecret,
-		allowedOrgs:   allowedOrgs,
+		membership:    membership,
 		deliveries:    deliveries,
 		ghClient:      ghClient,
 		timeEntries:   timeEntries,
@@ -258,29 +258,19 @@ func (h *Handler) handlePlan(ctx context.Context, event issueCommentEvent, cmd *
 		Labels:           labels,
 	}
 
+	var prevID *int64
 	if prev != nil {
-		// Flip the previous plan's status first so the partial-unique-index
-		// frees up. We backfill the superseded_by link after the new plan has
-		// an ID.
-		if err := h.planEntries.MarkSuperseded(ctx, prev.ID); err != nil {
-			log.Printf("error marking plan %d superseded: %v", prev.ID, err)
-			h.postError(ctx, event, "Failed to supersede existing plan. Please try again.")
-			return
-		}
+		prevID = &prev.ID
 	}
-
-	newPlan, err = h.planEntries.Create(ctx, newPlan)
+	newPlan, err = h.planEntries.ReplacePlan(ctx, prevID, newPlan)
 	if err != nil {
-		log.Printf("error creating plan entry: %v", err)
+		log.Printf("error recording plan: %v", err)
 		h.postError(ctx, event, "Failed to record plan. Please try again.")
 		return
 	}
 
 	var comment string
 	if prev != nil {
-		if err := h.planEntries.LinkSupersedeChain(ctx, prev.ID, newPlan.ID); err != nil {
-			log.Printf("error linking supersede chain plan %d -> %d: %v", prev.ID, newPlan.ID, err)
-		}
 		comment = fmt.Sprintf("Updated @%s's plan from %s to %s (plan #%d supersedes #%d)",
 			event.Comment.User.Login,
 			commands.FormatDuration(prev.DurationMinutes),
@@ -478,21 +468,23 @@ func (h *Handler) handleDelete(ctx context.Context, event issueCommentEvent) {
 	}
 }
 
+// isAuthorized defers to the shared MembershipPolicy (auth.MembershipChecker
+// in production). The policy caches decisions per user with a TTL, so this
+// is one map lookup in the common case — no GitHub API call per /log.
+//
+// On a transient GitHub outage the policy returns false, which can produce
+// spurious "not a member" replies. That's the same behaviour the previous
+// inline-check had; better surfaces would route those through a separate
+// "transient error" reply and skip the comment-post entirely. See the
+// follow-up in docs/operations.md.
 func (h *Handler) isAuthorized(event issueCommentEvent) bool {
-	username := event.Comment.User.Login
-	installID := event.Installation.ID
-
-	for _, org := range h.allowedOrgs {
-		isMember, err := h.ghClient.IsOrgMember(installID, org, username)
-		if err != nil {
-			log.Printf("error checking org membership for %s in %s: %v", username, org, err)
-			continue
-		}
-		if isMember {
-			return true
-		}
+	if h.membership == nil {
+		// Fail closed: a misconfigured deployment must not silently let
+		// every command through. main.go always wires a policy.
+		log.Printf("authorization: no membership policy configured; rejecting %s", event.Comment.User.Login)
+		return false
 	}
-	return false
+	return h.membership.IsAllowed(event.Comment.User.Login)
 }
 
 func (h *Handler) postError(ctx context.Context, event issueCommentEvent, msg string) {
