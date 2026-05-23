@@ -50,14 +50,22 @@ Billbird is **one instance per organisation**: each organisation gets its own Po
 ## Quick start
 
 ```bash
-# Clone and start
 git clone https://github.com/mwesterweel/billbird.git
 cd billbird
-cp env.example .env  # fill in your GitHub App credentials
-docker compose up
+cp env.example .env                # set BASE_URL and ALLOWED_ORGS
+docker compose run --rm --service-ports app billbird init
+                                   # one-click GitHub App registration
+docker compose up -d               # then install the App in your browser
+docker compose exec app billbird doctor   # sanity check
 ```
 
-See [docs/setup.md](docs/setup.md) for GitHub App registration and configuration.
+See [docs/setup.md](docs/setup.md) for the full automated path or the manual fallback.
+
+## Platform support
+
+Billbird is a **GitHub App** and integrates only with GitHub today. The Postgres schema, command parser, admin UI, and REST API are platform-agnostic, but the webhook ingestion and authentication layers are GitHub-specific (App installations, manifest flow, HMAC signature, org-membership endpoint).
+
+GitLab and Forgejo are **not currently supported**. Porting Billbird to either is real work — see [docs/architecture.md#platform-support](docs/architecture.md#platform-support) for what would need to change and an honest cost estimate. The path is open, but no roadmap commitment until there's concrete demand.
 
 ## Documentation
 
