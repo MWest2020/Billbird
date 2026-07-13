@@ -1,3 +1,8 @@
+---
+status: draft
+last_reviewed: 2026-07-13
+---
+
 # Contributing
 
 Billbird is open source and contributions are welcome.
@@ -8,7 +13,7 @@ Billbird is open source and contributions are welcome.
 
 - Go 1.25+
 - Docker and Docker Compose (for PostgreSQL)
-- A GitHub App for testing (see [setup.md](setup.md))
+- A GitHub App for testing (see [setup.md](how-to/setup.md))
 
 ### Get started
 
