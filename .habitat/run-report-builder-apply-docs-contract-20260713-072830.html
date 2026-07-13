@@ -1,0 +1,72 @@
+<!doctype html><html lang=nl><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Habitat run builder-apply-docs-contract-20260713-072830</title>
+<style>
+:root{color-scheme:light dark}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:2rem;
+ max-width:60rem;margin-inline:auto;line-height:1.5}
+h1{font-size:1.4rem;margin:0 0 .25rem}
+.sub{color:#888;margin-bottom:1.5rem}
+.badge{display:inline-block;padding:.1rem .6rem;border-radius:1rem;font-weight:600;font-size:.85rem}
+.ok{background:#1b7f3b;color:#fff}.bad{background:#b3261e;color:#fff}
+.grid{display:flex;gap:2rem;flex-wrap:wrap;margin:1rem 0}
+.grid div{font-size:.9rem}.grid b{display:block;color:#888;font-weight:500}
+pre{background:#8881;padding:1rem;border-radius:.5rem;overflow-x:auto;font-size:.85rem}
+table{border-collapse:collapse;width:100%;font-size:.8rem}
+th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #8883}
+code{font-family:ui-monospace,monospace}
+.v-ok{color:#1b7f3b;font-weight:700}.v-bad{color:#b3261e;font-weight:700}
+</style></head><body>
+<h1>builder · apply-docs-contract <span class="badge ok">ok</span></h1>
+<div class=sub>Habitat run-rapport · 2026-07-13T07:35:55Z</div>
+<div class=grid>
+ <div><b>verdict</b>ok</div><div><b>kosten (USD)</b>1.6450725000000004</div>
+ <div><b>turns</b>27</div>
+</div>
+<h2>Diff-samenvatting</h2><pre>docs/api-tokens.md                            |  68 +--------
+ docs/architecture.md                          | 182 +-----------------------
+ docs/client-attribution.md                    |  75 +---------
+ docs/commands.md                              | 166 +---------------------
+ docs/configuration.md                         |  77 +---------
+ docs/contributing.md                          |   7 +-
+ docs/corrections.md                           |  83 +----------
+ docs/dev-time-hook.md                         | 141 +------------------
+ docs/explanation/architecture.md              | 183 ++++++++++++++++++++++++
+ docs/how-to/dev-time-hook.md                  | 142 +++++++++++++++++++
+ docs/how-to/operations.md                     |  89 ++++++++++++
+ docs/how-to/self-hosting.md                   | 194 ++++++++++++++++++++++++++
+ docs/how-to/setup.md                          | 192 +++++++++++++++++++++++++
+ docs/index.md                                 |  30 ++++
+ docs/labels.md                                |  66 +--------
+ docs/operations.md                            |  88 +-----------
+ docs/reference/api-tokens.md                  |  69 +++++++++
+ docs/reference/client-attribution.md          |  76 ++++++++++
+ docs/reference/commands.md                    | 167 ++++++++++++++++++++++
+ docs/reference/configuration.md               |  78 +++++++++++
+ docs/reference/corrections.md                 |  84 +++++++++++
+ docs/reference/labels.md                      |  67 +++++++++
+ docs/reference/webhook-idempotency.md         |  87 ++++++++++++
+ docs/self-hosting.md                          | 193 +------------------------
+ docs/setup.md                                 | 187 +------------------------
+ docs/webhook-idempotency.md                   |  86 +-----------
+ openspec/changes/apply-docs-contract/tasks.md |  12 +-
+ 27 files changed, 1540 insertions(+), 1349 deletions(-)</pre>
+<h2>Audit-hashketen</h2>
+<p class=sub>Herberekend in je browser — geen server, geen CDN.</p>
+<table><thead><tr><th>run</th><th>rol</th><th>verdict</th><th>entry_hash</th><th>keten</th></tr></thead>
+<tbody id=rows></tbody></table>
+<script>
+const FIELDS=["prev_hash", "ts", "role", "change", "run_id", "verdict", "subtype", "diff_hash", "cost", "turns"], CHAIN=[{"ts": "2026-07-13T07:35:55Z", "role": "builder", "change": "apply-docs-contract", "run_id": "builder-apply-docs-contract-20260713-072830", "verdict": "ok", "subtype": "success", "cost": "1.6450725000000004", "turns": "27", "diff_hash": "f5a355ca100531dc886112a8ca63fff9492c8d726747de055d407db1d03bc7e9", "prev_hash": "", "entry_hash": "4486514799bb85999579f494f7083001c3ce68a410005b1bdc3aebf8722b3f73"}];
+const payload=e=>FIELDS.map(f=>String(e[f]??"")).join("|");
+async function sha(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));
+ return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+(async()=>{const tb=document.getElementById("rows");let prev="";
+ for(const e of CHAIN){const calc=await sha(payload(e));
+  const ok=calc===e.entry_hash && e.prev_hash===prev;
+  const tr=document.createElement("tr");
+  // textContent (nooit innerHTML) — audit-waarden worden niet als HTML uitgevoerd
+  const mk=(t,cls)=>{const td=document.createElement("td");td.textContent=t;if(cls)td.className=cls;tr.appendChild(td)};
+  mk(e.run_id);mk(e.role);mk(e.verdict);mk((e.entry_hash||"").slice(0,12)+"\u2026");
+  mk(ok?"\u2713 geldig":"\u2717 gebroken", ok?"v-ok":"v-bad");
+  tb.appendChild(tr);prev=e.entry_hash;}
+})();
+</script></body></html>
