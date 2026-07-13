@@ -1,13 +1,13 @@
 {
-  "role": "builder",
+  "role": "reviewer",
   "change": "apply-docs-contract",
-  "run_id": "builder-apply-docs-contract-20260713-072830",
+  "run_id": "reviewer-apply-docs-contract-20260713-073601",
   "repo": "https://github.com/MWest2020/Billbird.git",
   "verdict": "ok",
   "subtype": "success",
-  "total_cost_usd": "1.6450725000000004",
-  "num_turns": "27",
+  "total_cost_usd": "0.6506310000000001",
+  "num_turns": "14",
   "claude_exit": "0",
-  "finished_at": "2026-07-13T07:35:55Z",
-  "diff_hash": "f5a355ca100531dc886112a8ca63fff9492c8d726747de055d407db1d03bc7e9"
+  "finished_at": "2026-07-13T07:38:22Z",
+  "diff_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }

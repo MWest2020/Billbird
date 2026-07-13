@@ -1,0 +1,45 @@
+<!doctype html><html lang=nl><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Habitat run reviewer-apply-docs-contract-20260713-073601</title>
+<style>
+:root{color-scheme:light dark}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:2rem;
+ max-width:60rem;margin-inline:auto;line-height:1.5}
+h1{font-size:1.4rem;margin:0 0 .25rem}
+.sub{color:#888;margin-bottom:1.5rem}
+.badge{display:inline-block;padding:.1rem .6rem;border-radius:1rem;font-weight:600;font-size:.85rem}
+.ok{background:#1b7f3b;color:#fff}.bad{background:#b3261e;color:#fff}
+.grid{display:flex;gap:2rem;flex-wrap:wrap;margin:1rem 0}
+.grid div{font-size:.9rem}.grid b{display:block;color:#888;font-weight:500}
+pre{background:#8881;padding:1rem;border-radius:.5rem;overflow-x:auto;font-size:.85rem}
+table{border-collapse:collapse;width:100%;font-size:.8rem}
+th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #8883}
+code{font-family:ui-monospace,monospace}
+.v-ok{color:#1b7f3b;font-weight:700}.v-bad{color:#b3261e;font-weight:700}
+</style></head><body>
+<h1>reviewer · apply-docs-contract <span class="badge ok">ok</span></h1>
+<div class=sub>Habitat run-rapport · 2026-07-13T07:38:22Z</div>
+<div class=grid>
+ <div><b>verdict</b>ok</div><div><b>kosten (USD)</b>0.6506310000000001</div>
+ <div><b>turns</b>14</div>
+</div>
+<h2>Diff-samenvatting</h2><pre>(geen wijziging)</pre>
+<h2>Audit-hashketen</h2>
+<p class=sub>Herberekend in je browser — geen server, geen CDN.</p>
+<table><thead><tr><th>run</th><th>rol</th><th>verdict</th><th>entry_hash</th><th>keten</th></tr></thead>
+<tbody id=rows></tbody></table>
+<script>
+const FIELDS=["prev_hash", "ts", "role", "change", "run_id", "verdict", "subtype", "diff_hash", "cost", "turns"], CHAIN=[{"ts": "2026-07-13T07:35:55Z", "role": "builder", "change": "apply-docs-contract", "run_id": "builder-apply-docs-contract-20260713-072830", "verdict": "ok", "subtype": "success", "cost": "1.6450725000000004", "turns": "27", "diff_hash": "f5a355ca100531dc886112a8ca63fff9492c8d726747de055d407db1d03bc7e9", "prev_hash": "", "entry_hash": "4486514799bb85999579f494f7083001c3ce68a410005b1bdc3aebf8722b3f73"}, {"ts": "2026-07-13T07:38:22Z", "role": "reviewer", "change": "apply-docs-contract", "run_id": "reviewer-apply-docs-contract-20260713-073601", "verdict": "ok", "subtype": "success", "cost": "0.6506310000000001", "turns": "14", "diff_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "prev_hash": "4486514799bb85999579f494f7083001c3ce68a410005b1bdc3aebf8722b3f73", "entry_hash": "2f772120ee3d3623c68c88d66cb9696a05ba7a39631caa4a9a12bcaae3a8da7f"}];
+const payload=e=>FIELDS.map(f=>String(e[f]??"")).join("|");
+async function sha(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));
+ return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+(async()=>{const tb=document.getElementById("rows");let prev="";
+ for(const e of CHAIN){const calc=await sha(payload(e));
+  const ok=calc===e.entry_hash && e.prev_hash===prev;
+  const tr=document.createElement("tr");
+  // textContent (nooit innerHTML) — audit-waarden worden niet als HTML uitgevoerd
+  const mk=(t,cls)=>{const td=document.createElement("td");td.textContent=t;if(cls)td.className=cls;tr.appendChild(td)};
+  mk(e.run_id);mk(e.role);mk(e.verdict);mk((e.entry_hash||"").slice(0,12)+"\u2026");
+  mk(ok?"\u2713 geldig":"\u2717 gebroken", ok?"v-ok":"v-bad");
+  tb.appendChild(tr);prev=e.entry_hash;}
+})();
+</script></body></html>
