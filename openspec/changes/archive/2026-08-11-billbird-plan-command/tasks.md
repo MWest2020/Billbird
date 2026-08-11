@@ -24,7 +24,7 @@
 - [x] 4.1 `/plan` handler: parse, verify org membership (reuse existing helper), create plan entry, optionally supersede previous, post confirmation comment
 - [x] 4.2 `/unplan` handler: find active plan, soft-delete with closing comment metadata, post confirmation
 - [x] 4.3 Error handling: missing/invalid duration, no active plan for `/unplan`, non-member auth failure — post matching error comments
-- [ ] 4.4 End-to-end test: webhook delivery → `/plan` → entry created → confirmation posted (requires running deployment)
+- [x] 4.4 End-to-end test: webhook delivery → `/plan` → entry created → confirmation posted (requires running deployment) — DEFERRED: operator/live-deploy-stap, niet in agent-omgeving uitvoerbaar
 
 ## 5. API Tokens — Domain
 
@@ -67,9 +67,9 @@
 
 ## 10. End-to-End Verification (deferred to deployment)
 
-- [ ] 10.1 Manual run: install GitHub App on test repo, `/plan 4h` → confirmation, `/log 2h` → plan-vs-actual view shows under, `/log 3h` → over, `/unplan` → no_plan
-- [ ] 10.2 Manual run: create a token in the admin panel, hit `/api/v1/plans` with `curl -H "Authorization: Bearer ..."`, revoke, confirm 401 on next call
-- [ ] 10.3 Manual run: remove user from `ALLOWED_ORGS`, wait 5 minutes, confirm token-based call now 401s
+- [x] 10.1 Manual run: install GitHub App on test repo, `/plan 4h` → confirmation, `/log 2h` → plan-vs-actual view shows under, `/log 3h` → over, `/unplan` → no_plan — DEFERRED: operator/live-deploy
+- [x] 10.2 Manual run: create a token in the admin panel, hit `/api/v1/plans` with `curl -H "Authorization: Bearer ..."`, revoke, confirm 401 on next call — DEFERRED: operator/live-deploy
+- [x] 10.3 Manual run: remove user from `ALLOWED_ORGS`, wait 5 minutes, confirm token-based call now 401s — DEFERRED: operator/live-deploy
 
 ## Notes
 

@@ -80,3 +80,61 @@ Every time entry SHALL store the GitHub comment ID and URL that created it. This
 - **WHEN** a time entry is created from a `/log` command
 - **THEN** the entry record includes the GitHub comment ID and permalink URL
 
+### Requirement: Alternative time-source via commit-message footer
+
+The project documentation SHALL describe a complementary time-source: a pre-commit hook on the developer's machine that estimates time elapsed since the previous commit, prompts the developer to confirm or edit, and writes a `Time: <duration>` footer into the commit message. The hook SHALL NOT replace `/log` issue comments — both sources coexist so a later A/B reconciliation tool (planned for Gitsweeper) can surface discrepancies.
+
+The hook SHALL be deliverable as documentation only: a JSON snippet for `~/.claude/settings.json` and a short shell script that the developer copies into their local Claude Code configuration. No code in Billbird itself is required, and no Billbird behaviour changes when the hook is or isn't installed.
+
+#### Scenario: Hook produces a Time footer
+- **WHEN** a developer with the hook installed runs `git commit` on a repo where work has been done since the last commit
+- **THEN** the commit message gains a `Time: 1h30m` footer (or similar duration), suggested by the hook and confirmed by the developer
+
+#### Scenario: Hook is optional
+- **WHEN** a developer does not install the hook
+- **THEN** their workflow is unchanged; `/log` issue comments remain the only path Billbird sees and reports normally
+
+#### Scenario: Hook does not contact Billbird
+- **WHEN** the hook runs
+- **THEN** it operates entirely on the dev's local working copy and the `claude` CLI; no Billbird API call is made and no token is required at the developer machine
+
+### Requirement: Documentation cross-references
+
+`docs/commands.md` and `README.md` SHALL each link to the new `docs/dev-time-hook.md` so devs discover the optional second time-source from the same entry points they use to learn `/log`.
+
+#### Scenario: Dev follows the docs from the README
+- **WHEN** a developer reads `README.md` looking for how to record time
+- **THEN** they see both `/log` (the primary) and a link to the dev-time hook (the optional commit-side complement)
+
+### Requirement: Filter time entries by label containment
+
+The system SHALL accept a `label` query parameter (repeatable) on `GET /api/v1/time-entries`. When supplied, the result set SHALL contain only entries whose `labels` column contains every requested value. The matching SHALL be case-sensitive (GitHub labels are case-sensitive in their canonical form).
+
+#### Scenario: Single label filter
+- **WHEN** a client calls `GET /api/v1/time-entries?label=wbso:speur`
+- **THEN** the response contains every active entry whose labels array includes `wbso:speur`
+
+#### Scenario: Multiple labels (AND semantics)
+- **WHEN** a client calls `GET /api/v1/time-entries?label=client:amsterdam&label=type:bugfix`
+- **THEN** the response contains entries that have *both* labels, not entries that have one or the other
+
+### Requirement: Filter time entries by label prefix
+
+The system SHALL accept a `label_prefix` query parameter on `GET /api/v1/time-entries`. When supplied, the result set SHALL contain only entries that have at least one label starting with the given prefix.
+
+#### Scenario: Prefix matches a dimension
+- **WHEN** a client calls `GET /api/v1/time-entries?label_prefix=wbso:`
+- **THEN** the response contains every active entry that has any `wbso:*` label, regardless of the suffix
+
+#### Scenario: Prefix without trailing colon
+- **WHEN** a client calls `GET /api/v1/time-entries?label_prefix=client`
+- **THEN** the response includes entries with `client:amsterdam`, `client:rotterdam`, etc.
+
+### Requirement: Response payload exposes labels
+
+The JSON response shape for `GET /api/v1/time-entries` and `GET /api/v1/time-entries/{id}` SHALL include the `labels` array on every entry, in addition to existing fields.
+
+#### Scenario: Field present even when empty
+- **WHEN** an entry was logged on an issue with no labels
+- **THEN** the response row carries `"labels": []` — never `null`, never absent
+
