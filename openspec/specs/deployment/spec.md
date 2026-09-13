@@ -1,7 +1,18 @@
 # deployment Specification
 
 ## Purpose
-TBD - created by archiving change billbird-v1. Update Purpose after archive.
+
+How Billbird is run, and the scope decisions that keep it small.
+
+The dependency list is the design: **nothing beyond Postgres and GitHub.** No
+queue, no cache, no object store. Every one of those would be a second thing to
+operate for a tool whose whole pitch is that it gets out of the way.
+
+The other decision is deliberate and worth restating because it looks like a
+shortcut: **one instance per organisation, no multi-tenant partitioning.** Tenant
+isolation inside a database is a class of bug that leaks other people's hours,
+and the alternative here costs a container. Separation by deployment is the
+boring version, and boring is the point.
 ## Requirements
 ### Requirement: Docker Compose for local development
 The system SHALL provide a Docker Compose configuration that starts the application and a Postgres database with a single `docker compose up` command. The configuration SHALL support hot-reload for development.

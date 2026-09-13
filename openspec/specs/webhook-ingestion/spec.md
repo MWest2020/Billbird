@@ -1,7 +1,17 @@
 # webhook-ingestion Specification
 
 ## Purpose
-TBD - created by archiving change billbird-v1. Update Purpose after archive.
+
+The front door: GitHub events come in, and each one is handled exactly once.
+
+Everything Billbird knows arrives here, so this is where correctness is cheapest
+to enforce and most expensive to skip.
+
+**Idempotent processing** is the whole requirement. GitHub redelivers — on
+timeouts, on retries, on its own schedule — and a redelivered `/log 2h` that is
+processed twice means four hours on an invoice. There is no repair for that which
+does not involve a person going through a spreadsheet, so it is prevented at the
+door instead of detected later.
 ## Requirements
 ### Requirement: GitHub App webhook endpoint
 The system SHALL expose an HTTP POST endpoint that receives GitHub webhook payloads. The endpoint SHALL verify the webhook signature using the configured webhook secret (HMAC-SHA256) before processing any event. Invalid signatures SHALL be rejected with HTTP 401.

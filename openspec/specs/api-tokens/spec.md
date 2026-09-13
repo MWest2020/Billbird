@@ -1,7 +1,20 @@
 # api-tokens Specification
 
 ## Purpose
-TBD - created by archiving change billbird-plan-command. Update Purpose after archive.
+
+Programmatic access: a token instead of a browser session, for the things that
+read and write Billbird without a human.
+
+The design question here is not "how do we authenticate" but "what happens when
+someone leaves". Hence the two requirements that matter most. **Tokens are
+hashed at rest**, so a database copy is not a set of working keys. And
+**authorisation re-checks org membership** on use — a token is not a permission
+it captured on the day it was issued; someone removed from the org loses access
+now, not whenever someone remembers to revoke.
+
+Token-driven writes stay visible in the audit view for the same reason entries
+carry provenance: an hour nobody can attribute to an actor is an hour nobody can
+defend.
 ## Requirements
 ### Requirement: Issue API tokens for authenticated users
 The admin panel SHALL allow any authenticated user (member of `ALLOWED_ORGS`) to create personal API tokens. Each created token SHALL be returned in plaintext exactly once, in the response body of the create call. The system SHALL NOT persist the plaintext.
