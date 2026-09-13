@@ -1,7 +1,18 @@
 # time-planning Specification
 
 ## Purpose
-TBD - created by archiving change billbird-labels-passthrough. Update Purpose after archive.
+
+The other half of a timesheet: what you *expect* to spend, before you spend it.
+
+Logging tells you where the time went. Planning is what lets you notice, while
+there is still time to act, that it is going somewhere else. It uses the same
+surface as logging — slash commands in the thread — because a plan kept in a
+different tool than the actuals is a plan nobody reconciles.
+
+**Re-planning supersedes the active plan** rather than adding to it: an estimate
+that changed is a new estimate, not a second one, and a list of every guess you
+ever made is not a plan. The label filtering exists so a plan can be asked about
+a slice of work (a client, a milestone) without a separate reporting layer.
 ## Requirements
 ### Requirement: Filter plan entries by label containment and prefix
 

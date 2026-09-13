@@ -1,7 +1,18 @@
 # client-attribution Specification
 
 ## Purpose
-TBD - created by archiving change billbird-v1. Update Purpose after archive.
+
+Turning "two hours on issue #41" into "two hours for this client", without asking
+anyone to say so.
+
+Attribution is the step that makes the data billable, and it is also the step
+most likely to be skipped if it needs a human. So it rides on something teams
+already maintain: labels. A mapping from label to client, applied automatically
+when the entry is created.
+
+Automatic is the load-bearing word. An attribution someone has to remember to set
+will be wrong exactly on the entries that matter most — the ones logged in a
+hurry at the end of a long day.
 ## Requirements
 ### Requirement: Client-label mapping
 Admins SHALL be able to create mappings between GitHub labels and client records. A mapping associates a label pattern (e.g., `client:amsterdam`) with a specific client in the system. Mappings are scoped to a repository or apply globally across all repositories.

@@ -1,7 +1,18 @@
 # cycle-time-tracking Specification
 
 ## Purpose
-TBD - created by archiving change billbird-v1. Update Purpose after archive.
+
+How long work took in wall-clock time, tracked from the project board and from PR
+merges.
+
+This answers a different question than the hours do, and the spec is explicit
+that they must not be mixed: **cycle time is separate from logged hours.** Two
+hours of work spread over three weeks is a very normal thing and a very bad
+number to add up with anything else. Conflating them produces a metric that
+looks like effort, is actually latency, and quietly misleads whoever reads it.
+
+It is derived from events the team already generates — board transitions, a merge
+— so nobody has to start or stop a clock.
 ## Requirements
 ### Requirement: Track start time from project board
 The system SHALL record a start timestamp when an issue is moved to a column designated as "in progress" on a GitHub Project board. The column name matching SHALL be case-insensitive and configurable (default: "In Progress").

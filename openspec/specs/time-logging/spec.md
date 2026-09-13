@@ -1,7 +1,21 @@
 # time-logging Specification
 
 ## Purpose
-TBD - created by archiving change billbird-v1. Update Purpose after archive.
+
+Logging hours where the work already happens: a slash command in an issue
+comment.
+
+The reason Billbird exists at all is that every timesheet tool asks a developer
+to go somewhere else. `/log 2h` in the thread you are already in costs nothing,
+and a tool that costs nothing gets used — which is the only property that makes
+time tracking produce usable data.
+
+Two requirements carry the rest. **Confirmation comments**, because a command
+that silently succeeds is a command you stop trusting the moment you are not
+sure whether it registered; the thread has to show what was recorded. And
+**comment provenance**, because an entry you cannot trace back to the comment
+that made it is an entry nobody can dispute or explain three months later, when
+it turns up on an invoice.
 ## Requirements
 ### Requirement: Log time via slash command
 The system SHALL parse `/log <duration>` commands from GitHub issue comments. Duration SHALL support hours (`h`), minutes (`m`), and combined formats (e.g., `1h30m`, `2h`, `45m`). The system SHALL create a time entry linked to the commenting user, the issue, and the repository.

@@ -1,7 +1,19 @@
 # data-model Specification
 
 ## Purpose
-TBD - created by archiving change billbird-v1. Update Purpose after archive.
+
+What is stored, and the two rules that make the numbers defensible.
+
+This is a system whose output ends up on invoices. That raises the bar from
+"correct now" to "explicable later", and the storage layer is where that is
+decided.
+
+**No physical deletes.** A `/delete` marks, it does not remove. If an hour
+disappeared, the record of it disappearing is the only thing that lets you
+answer why the total changed. And the **label snapshot on the entry**: labels are
+edited, clients are remapped, and an entry that reads its attribution live would
+silently change what it says about last quarter. The entry keeps the labels it
+had when it was logged, so history stays what it was.
 ## Requirements
 ### Requirement: Time entry storage
 The system SHALL store time entries in a Postgres table with the following attributes: entry ID, GitHub user ID, GitHub username, repository (owner/name), issue number, duration in minutes, description (nullable), client ID (nullable), source GitHub comment ID, source GitHub comment URL, entry status (active, superseded, deleted), superseded-by entry ID (nullable), created-at timestamp, and created-by type (user or admin).

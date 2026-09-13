@@ -1,7 +1,19 @@
 # admin-panel Specification
 
 ## Purpose
-TBD - created by archiving change billbird-v1. Update Purpose after archive.
+
+The place a human looks: hours, corrections, mappings, and a way to get the data
+out.
+
+Slash commands are how data goes in; this is how it is checked. That makes the
+**correction history** more important than the dashboard — a total is only worth
+something if you can see what it used to be and why it changed, and that view is
+what turns "no physical deletes" in the data model into something anyone can
+actually use.
+
+**CSV export** is deliberate modesty. Billbird is not a billing system and does
+not want to be; at some point the numbers leave for a spreadsheet or an
+accountant, and refusing to make that easy would just get the data retyped.
 ## Requirements
 ### Requirement: GitHub OAuth authentication
 The admin panel SHALL require authentication via GitHub OAuth. Only users who are members of the configured GitHub organization (or repository collaborators) SHALL be granted access. Admin roles SHALL be configurable.
