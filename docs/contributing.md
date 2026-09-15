@@ -112,3 +112,18 @@ Migrations run automatically on application startup.
 - **No physical deletes**: All state changes through status fields and correction chains.
 - **UTC everywhere**: Never store local time without offset.
 - **Boring and auditable**: Prefer well-understood approaches over clever ones.
+
+## De documentatie beweegt mee met de code
+
+Twee gates, omdat er twee manieren zijn om code binnen te krijgen:
+
+- **Elke PR** loopt langs `docs-gates` (`.github/workflows/docs-gates.yml`), die
+  de checker uit de hub (MWest2020/handbook) aanroept, op commit-SHA gepind.
+- **Elke push naar main** loopt langs de pre-push-guard. Installeren:
+  `bash scripts/install_hooks.sh`. In deze repo gaat lang niet alles via een PR,
+  en wat rechtstreeks naar main gaat komt nooit langs die workflow — precies daar
+  loopt documentatie stilletjes achter.
+
+Raakt een wijziging `cmd/`, `internal/` of `migrations/` zonder dat er iets onder
+`docs/` meebeweegt, dan is hij rood. Kan het echt niet: `DOCS_DRIFT_OK=1 git push`
+lokaal, of het label `docs-drift-ok` op de PR. Allebei zichtbaar.

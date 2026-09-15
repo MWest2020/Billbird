@@ -1,0 +1,17 @@
+# Docs-gates: raakt een PR de code, dan moet er iets onder docs/ meebewegen.
+# De checker leeft in de hub (MWest2020/handbook) zodat er geen kopie per repo
+# veroudert; zie handbook docs/reference/docs-gates.md.
+#
+# `code_paths` is de ENIGE plek waar staat wat "code" is in deze repo. De lokale
+# pre-push-guard leest dezelfde regel hieruit — in Billbird gaat lang niet alles
+# via een PR, en wat rechtstreeks naar main gaat komt hier nooit langs.
+name: docs-gates
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+jobs:
+  gates:
+    uses: MWest2020/handbook/.github/workflows/docs-gates.yml@0566ba773bdcc242b2d37f17b4bde95f8615acd6  # main
+    with:
+      code_paths: "cmd/,internal/,migrations/"
+      drift_mode: "fail"
