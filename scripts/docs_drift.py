@@ -32,7 +32,12 @@ import sys
 HIER = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HIER)
 WORKFLOW = os.path.join(ROOT, ".github", "workflows", "docs-gates.yml")
-DOCS = ("docs/", "README.md")
+# Wat als documentatie telt. ALLEEN docs/, want dat is wat de hub-checker telt
+# (handbook scripts/check_drift.py). Deze spiegel telde eerst README.md er ook
+# bij, en dat was meteen de fout waar hij zelf voor gebouwd is: één afspraak met
+# twee handhavers werd twee afspraken. Lokaal groen, in CI rood. Wil je dat
+# README.md meetelt, dan verander je dat in de hub — niet hier.
+DOCS = ("docs/",)
 
 
 def code_paths(pad=WORKFLOW):
@@ -61,7 +66,8 @@ def main() -> int:
         return 0
     patronen = code_paths()
     code = [p for p in paden if raakt(p, patronen)]
-    docs = [p for p in paden if p.startswith(DOCS[0]) or p == DOCS[1]]
+    docs = [p for p in paden if any(p == d.rstrip("/") or p.startswith(d)
+                                    for d in DOCS)]
     if not code or docs:
         return 0
     if os.environ.get("DOCS_DRIFT_OK"):
