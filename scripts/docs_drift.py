@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: EUPL-1.2
+# SPDX-License-Identifier: MIT
 """Raakt deze push de code zonder dat er docs meebewegen?
 
 De gezaghebbende checker staat in de hub (MWest2020/handbook) en draait op elke
