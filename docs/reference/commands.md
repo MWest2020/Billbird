@@ -1,6 +1,6 @@
 ---
 status: draft
-last_reviewed: 2026-07-13
+last_reviewed: 2026-09-23
 ---
 
 # Commands reference
@@ -142,6 +142,16 @@ Remove the active plan on the current issue.
 
 **Errors:**
 - If the issue has no active plan, the bot replies with an error
+
+## One verb per action, no aliases
+
+The command tokens are English and there is exactly one per action. `/log` is
+what you are doing — logging time is the common idiom in developer tools — and
+a single verb keeps the parser, the audit trail, the reports and these docs
+consistent. Proposals for parallel syntax (`schrijf uren:`, `tijd:`, `hours:`)
+are declined: parsing both means more code and edge cases, and migrating later
+means churn. Messages and descriptions around the commands may be in any
+language; the tokens stay as they are.
 
 ## How commands are parsed
 
